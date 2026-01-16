@@ -9,6 +9,8 @@ on:
 jobs:
   check-battery:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     
     steps:
       - name: リポジトリをチェックアウト
