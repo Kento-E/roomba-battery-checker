@@ -55,7 +55,7 @@ def get_roomba_battery_status():
         try:
             roomba.connect()
 
-            # 状態を取得
+            # 状態を取得（同期的にRoombaの現在の状態を取得）
             state = roomba.current_state()
             if not state:
                 logger.warning("Roombaの状態を取得できませんでした")
