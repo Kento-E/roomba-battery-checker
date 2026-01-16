@@ -4,11 +4,11 @@ Roombaの充電状態を定期確認するツール🔋
 
 ## 概要
 
-このツールは、iRobotアカウントに自動ログインしてRoombaのバッテリー状態を確認し、充電が100%でない場合にメール通知を送信します。GitHub Actionsを使用してスケジュール実行されるため、定期清掃の前にバッテリー不足を事前に検知できます。
+このツールは、ローカルネットワーク経由でRoombaに接続してバッテリー状態を確認し、充電が100%でない場合にメール通知を送信します。GitHub Actionsを使用してスケジュール実行されるため、定期清掃の前にバッテリー不足を事前に検知できます。
 
 ## 機能
 
-- iRobotアカウントへの自動ログイン
+- ローカルネットワーク経由でRoombaに接続
 - Roombaのバッテリー残量チェック
 - バッテリーが100%でない場合のメール通知（SMTP経由）
 - GitHub Actionsによるスケジュール実行
@@ -19,12 +19,24 @@ Roombaの充電状態を定期確認するツール🔋
 
 このリポジトリをフォークまたはクローンします。
 
-### 2. 必要な環境変数の設定
+### 2. Roombaの認証情報を取得
+
+ローカルネットワーク上でRoombaのBLIDとパスワードを取得します：
+
+```bash
+pip install roombapy
+roombapy discover
+```
+
+上記コマンドを実行し、Roombaの**HOMEボタンを長押し**してください（ビープ音が鳴るまで）。
+
+### 3. 必要な環境変数の設定
 
 GitHubリポジトリの Settings → Secrets and variables → Actions で、以下のSecretsを設定してください：
 
-- `IROBOT_EMAIL`: iRobotアカウントのメールアドレス
-- `IROBOT_PASSWORD`: iRobotアカウントのパスワード
+- `ROOMBA_IP`: RoombaのローカルIPアドレス（discoverコマンドで表示されます）
+- `ROOMBA_BLID`: Roombaのユーザー名（discoverコマンドで表示されます）
+- `ROOMBA_PASSWORD`: Roombaのパスワード（discoverコマンドで表示されます）
 - `SMTP_SERVER`: SMTPサーバーのホスト名（例: smtp.gmail.com）
 - `SMTP_PORT`: SMTPサーバーのポート番号（通常は587）
 - `SMTP_USER`: SMTP認証用のユーザー名
@@ -34,6 +46,12 @@ GitHubリポジトリの Settings → Secrets and variables → Actions で、�
 ### 3. GitHub Actionsの有効化
 
 リポジトリのActionsタブから、ワークフローを有効化してください。
+
+**重要**: GitHub ActionsのランナーはRoombaと同じローカルネットワークにアクセスできないため、このワークフローはそのままでは動作しません。以下のいずれかの方法が必要です：
+
+1. **セルフホステッドランナーを使用**: 自宅のネットワークにGitHub Actions self-hosted runnerをセットアップ
+2. **VPN経由でアクセス**: GitHub-hostedランナーからVPN経由で自宅ネットワークに接続
+3. **ローカルで実行**: GitHub Actionsを使用せず、cronやタスクスケジューラでローカル実行
 
 ## 使い方
 
@@ -58,8 +76,9 @@ GitHub ActionsのActionsタブから「Roombaバッテリーチェック」ワ�
 pip install -r requirements.txt
 
 # 環境変数を設定
-export IROBOT_EMAIL="your@email.com"
-export IROBOT_PASSWORD="your_password"
+export ROOMBA_IP="192.168.1.100"
+export ROOMBA_BLID="your_blid"
+export ROOMBA_PASSWORD="your_password"
 export SMTP_SERVER="smtp.gmail.com"
 export SMTP_PORT="587"
 export SMTP_USER="smtp_user"
@@ -72,9 +91,22 @@ python src/check_battery.py
 
 ## トラブルシューティング
 
-### pyrobotライブラリについて
+### Roombaへの接続について
 
-このツールは`pyrobot`ライブラリを使用してiRobot APIにアクセスします。ライブラリのインストールに問題がある場合は、別の互換ライブラリの使用を検討してください。
+このツールはRoombaとローカルネットワーク経由で通信します。そのため：
+
+- Roombaが自宅のWi-Fiに接続されている必要があります
+- スクリプトを実行するマシンがRoombaと同じネットワークにある必要があります
+- GitHub Actions（クラウド）から直接実行する場合は、セルフホステッドランナーまたはVPNの設定が必要です
+
+### roombapyライブラリについて
+
+このツールは`roombapy`ライブラリを使用してRoomba APIにアクセスします。対応機種：
+
+- Roomba 900シリーズ
+- Roomba i, s, jシリーズ（Wi-Fi対応モデル）
+
+古いモデルやWi-Fi非対応のモデルでは動作しません。
 
 ### Gmail SMTPの設定
 

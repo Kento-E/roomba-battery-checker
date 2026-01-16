@@ -17,13 +17,26 @@ Roombaのバッテリー状態を定期的にチェックし、100%でない場�
 
 以下のSecretsをリポジトリに設定する必要があります：
 
-- `IROBOT_EMAIL`: iRobotアカウントのメールアドレス
-- `IROBOT_PASSWORD`: iRobotアカウントのパスワード
+- `ROOMBA_IP`: RoombaのローカルIPアドレス
+- `ROOMBA_BLID`: Roombaのユーザー名（BLID）
+- `ROOMBA_PASSWORD`: Roombaのパスワード
 - `SMTP_SERVER`: SMTPサーバーのホスト名（例: smtp.gmail.com）
 - `SMTP_PORT`: SMTPサーバーのポート番号（通常は587）
 - `SMTP_USER`: SMTP認証用のユーザー名
 - `SMTP_PASSWORD`: SMTP認証用のパスワード
 - `NOTIFICATION_EMAIL`: 通知メールの送信先アドレス
+
+#### RoombaのBLIDとパスワードの取得方法
+
+RoombaのBLIDとパスワードは、roombapyライブラリのdiscoverコマンドで取得できます：
+
+```bash
+pip install roombapy
+roombapy discover
+```
+
+上記コマンドを実行すると、ローカルネットワーク上のRoombaを検出し、BLIDとパスワードを表示します。
+検出中はRoombaのHOMEボタンを長押しして、ビープ音が鳴るまで待ってください。
 
 #### 動作の流れ
 

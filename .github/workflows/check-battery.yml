@@ -26,8 +26,9 @@ jobs:
       
       - name: Roombaバッテリー状態を確認
         env:
-          IROBOT_EMAIL: ${{ secrets.IROBOT_EMAIL }}
-          IROBOT_PASSWORD: ${{ secrets.IROBOT_PASSWORD }}
+          ROOMBA_IP: ${{ secrets.ROOMBA_IP }}
+          ROOMBA_BLID: ${{ secrets.ROOMBA_BLID }}
+          ROOMBA_PASSWORD: ${{ secrets.ROOMBA_PASSWORD }}
           SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
           SMTP_PORT: ${{ secrets.SMTP_PORT }}
           SMTP_USER: ${{ secrets.SMTP_USER }}

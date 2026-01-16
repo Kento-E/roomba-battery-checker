@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
 Roombaのバッテリー状態を確認し、100%でない場合にメール通知を送信するスクリプト
+
+注意: このスクリプトはroombapyライブラリを使用してローカルネットワーク経由で
+Roombaに接続します。事前にBLIDとパスワードの取得が必要です。
 """
 
 import os
@@ -19,43 +22,55 @@ logger = logging.getLogger(__name__)
 
 def get_roomba_battery_status():
     """
-    iRobotアカウントにログインしてRoombaのバッテリー状態を取得
+    Roombaにローカル接続してバッテリー状態を取得
 
     Returns:
         dict: バッテリー情報（level: int, device_name: str）
     """
     try:
-        # pyrobotライブラリを使用してiRobot APIにアクセス
-        from pyrobot import Robot
+        # roombapyライブラリを使用してRoombaに接続
+        from roombapy import Roomba
 
-        email = os.environ.get("IROBOT_EMAIL")
-        password = os.environ.get("IROBOT_PASSWORD")
+        roomba_ip = os.environ.get("ROOMBA_IP")
+        roomba_blid = os.environ.get("ROOMBA_BLID")
+        roomba_password = os.environ.get("ROOMBA_PASSWORD")
 
-        if not email or not password:
-            logger.error("IROBOT_EMAILまたはIROBOT_PASSWORDが設定されていません")
+        if not all([roomba_ip, roomba_blid, roomba_password]):
+            logger.error(
+                "ROOMBA_IP、ROOMBA_BLID、または" "ROOMBA_PASSWORDが設定されていません"
+            )
+            logger.error(
+                "roombapyのdiscoverコマンドで取得してください: " "roombapy discover"
+            )
             return None
 
-        logger.info(f"iRobotアカウント {email} でログイン中...")
-        robot = Robot(email, password)
+        logger.info(f"Roomba {roomba_ip} に接続中...")
+        roomba = Roomba(
+            address=roomba_ip, blid=roomba_blid, password=roomba_password
+        )
 
-        # デバイス一覧を取得
-        devices = robot.get_devices()
-        if not devices:
-            logger.warning("Roombaデバイスが見つかりませんでした")
+        # 接続してステータスを取得
+        roomba.connect()
+
+        # 状態を取得
+        state = roomba.current_state()
+        if not state:
+            logger.warning("Roombaの状態を取得できませんでした")
+            roomba.disconnect()
             return None
 
-        # 最初のデバイスのバッテリー状態を取得
-        device = devices[0]
-        battery_level = device.get("batPct", 0)
-        device_name = device.get("name", "Unknown Roomba")
+        battery_level = state.get("batPct", 0)
+        device_name = state.get("name", "Roomba")
 
         logger.info(f"デバイス: {device_name}, バッテリー残量: {battery_level}%")
+
+        roomba.disconnect()
 
         return {"level": battery_level, "device_name": device_name}
 
     except ImportError:
-        logger.error("pyrobotライブラリがインストールされていません")
-        logger.error("pip install pyrobot でインストールしてください")
+        logger.error("roombapyライブラリがインストールされていません")
+        logger.error("pip install roombapy でインストールしてください")
         return None
     except Exception as e:
         logger.error(f"バッテリー状態の取得に失敗しました: {e}")
@@ -98,7 +113,7 @@ def send_email_notification(battery_info):
         msg["From"] = smtp_user
         msg["To"] = notification_email
         msg["Subject"] = (
-            f"[Roomba通知] {device_name}のバッテリー残量が{battery_level}%です"
+            f"[Roomba通知] {device_name}の" f"バッテリー残量が{battery_level}%です"
         )
 
         body = f"""
@@ -145,7 +160,9 @@ def main():
 
     # バッテリーが100%でない場合はメール通知
     if battery_level < 100:
-        logger.warning(f"バッテリー残量が{battery_level}%です。メール通知を送信します")
+        logger.warning(
+            f"バッテリー残量が{battery_level}%です。" "メール通知を送信します"
+        )
         success = send_email_notification(battery_info)
         if not success:
             logger.error("メール通知の送信に失敗しました")
