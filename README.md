@@ -57,7 +57,7 @@ GitHubリポジトリの Settings → Secrets and variables → Actions で、�
 
 ### スケジュール実行
 
-デフォルトでは、毎日午前9時（JST）に自動実行されます。
+デフォルトでは、毎週月・水・金曜日の午前6時30分（JST）に自動実行されます。
 
 実行スケジュールを変更したい場合は、`.github/workflows/check-battery.yml`のcron式を編集してください。
 
