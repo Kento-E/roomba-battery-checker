@@ -35,7 +35,7 @@ roombapyを使用してローカルネットワーク経由で接続します。
 
 - Roombaのバッテリー残量チェック
 - バッテリーが100%でない場合のメール通知（SMTP経由）
-- GitHub Actionsによるスケジュール実行（毎週月・水・金曜日 6:30 JST）
+- GitHub Actionsによるスケジュール実行（詳細は各ワークフローファイルを参照）
 
 ## セットアップ（クラウドAPI版 - 推奨）
 
@@ -91,7 +91,9 @@ GitHubリポジトリの Settings → Secrets and variables → Actions で、�
 
 ### スケジュール実行
 
-デフォルトでは、毎週月・水・金曜日の午前6時30分（JST）に自動実行されます。
+デフォルトのスケジュールは各ワークフローファイルを参照してください：
+- クラウドAPI版: [.github/workflows/check-battery-cloud.yml](.github/workflows/check-battery-cloud.yml#L4-L8)
+- ローカルネットワーク版: [.github/workflows/check-battery.yml](.github/workflows/check-battery.yml#L4-L8)
 
 実行スケジュールを変更したい場合は、`.github/workflows/check-battery.yml`のcron式を編集してください。
 

@@ -16,7 +16,7 @@
 
 #### トリガー条件
 
-- **スケジュール実行**: 毎週月・水・金曜日の午前6時30分（JST）/ UTC 21:30（前日）
+- **スケジュール実行**: [check-battery-cloud.yml](check-battery-cloud.yml#L4-L8) を参照
 - **手動実行**: GitHubのActionsタブから手動で実行可能（`workflow_dispatch`）
 
 #### 必要な環境変数（GitHub Secrets）
@@ -56,7 +56,7 @@
 
 #### トリガー条件
 
-- **スケジュール実行**: 毎週月・水・金曜日の午前6時30分（JST）/ UTC 21:30（前日）
+- **スケジュール実行**: [check-battery.yml](check-battery.yml#L4-L8) を参照
 - **手動実行**: GitHubのActionsタブから手動で実行可能（`workflow_dispatch`）
 
 #### 必要な環境変数（GitHub Secrets）

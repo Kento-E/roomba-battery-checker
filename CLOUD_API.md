@@ -74,7 +74,7 @@ RoombaのHOMEボタンを長押しして、ビープ音が鳴るまで待ちま�
 
 ### スケジュール実行
 
-デフォルトでは、毎週月・水・金曜日の午前6時30分（JST）に自動実行されます。
+デフォルトのスケジュールは [.github/workflows/check-battery-cloud.yml](../.github/workflows/check-battery-cloud.yml#L4-L8) を参照してください。
 
 ### 手動実行
 
