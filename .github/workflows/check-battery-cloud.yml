@@ -1,0 +1,36 @@
+name: Roombaバッテリーチェック（クラウドAPI版）
+
+on:
+  schedule:
+    # 毎週月・水・金曜日の午前6時30分（JST）に実行 (UTC 21:30 前日)
+    - cron: '30 21 * * 0,2,4'
+  workflow_dispatch:  # 手動実行も可能
+
+jobs:
+  check-battery:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    
+    steps:
+      - name: リポジトリをチェックアウト
+        uses: actions/checkout@v4
+      
+      - name: Node.jsをセットアップ
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: 依存関係をインストール
+        run: npm install
+      
+      - name: Roombaバッテリー状態を確認（クラウド経由）
+        env:
+          ROOMBA_BLID: ${{ secrets.ROOMBA_BLID }}
+          ROOMBA_PASSWORD: ${{ secrets.ROOMBA_PASSWORD }}
+          SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          NOTIFICATION_EMAIL: ${{ secrets.NOTIFICATION_EMAIL }}
+        run: npm run check-battery

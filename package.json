@@ -1,0 +1,16 @@
+{
+  "name": "roomba-battery-checker",
+  "version": "1.0.0",
+  "description": "Roombaのバッテリー状態をチェックしてメール通知",
+  "main": "src/check_battery_cloud.js",
+  "scripts": {
+    "check-battery": "node src/check_battery_cloud.js"
+  },
+  "keywords": ["roomba", "irobot", "battery", "notification"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "dorita980": "^3.3.2",
+    "nodemailer": "^6.9.8"
+  }
+}
