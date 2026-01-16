@@ -101,16 +101,14 @@ roombapy discover
 
 #### スケジュールのカスタマイズ
 
-実行時刻を変更したい場合は、`check-battery.yml`の`cron`式を編集してください：
+実行時刻を変更したい場合は、各ワークフローファイルの`cron`式を編集してください：
 
-```yaml
-schedule:
-  - cron: '30 21 * * 0,2,4'  # 毎週月・水・金曜日 UTC 21:30（JST 翌日6:30）
-```
+- クラウドAPI版: [check-battery-cloud.yml](check-battery-cloud.yml#L6)
+- ローカルネットワーク版: [check-battery.yml](check-battery.yml#L6)
 
 cron式の形式: `分 時 日 月 曜日`（すべてUTC時刻、曜日は0=日曜日、1=月曜日...）
 
-例：
+参考例：
 - `30 21 * * 0,2,4`: 毎週日・火・木曜日UTC 21:30（JST 翌日月・水・金曜日6:30）
 - `0 0 * * *`: 毎日UTC 0時（JST 9時）
 - `0 9 * * 1`: 毎週月曜日UTC 9時（JST 18時）
