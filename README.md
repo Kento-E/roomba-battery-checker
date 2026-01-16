@@ -43,7 +43,7 @@ GitHubリポジトリの Settings → Secrets and variables → Actions で、�
 - `SMTP_PASSWORD`: SMTP認証用のパスワード
 - `NOTIFICATION_EMAIL`: 通知メールの送信先アドレス
 
-### 3. GitHub Actionsの有効化
+### 4. GitHub Actionsの有効化
 
 リポジトリのActionsタブから、ワークフローを有効化してください。
 

@@ -46,27 +46,29 @@ def get_roomba_battery_status():
 
         logger.info(f"Roomba {roomba_ip} に接続中...")
         roomba = Roomba(
-            address=roomba_ip, blid=roomba_blid, password=roomba_password
+            address=roomba_ip,
+            blid=roomba_blid,
+            password=roomba_password,
         )
 
         # 接続してステータスを取得
-        roomba.connect()
+        try:
+            roomba.connect()
 
-        # 状態を取得
-        state = roomba.current_state()
-        if not state:
-            logger.warning("Roombaの状態を取得できませんでした")
+            # 状態を取得
+            state = roomba.current_state()
+            if not state:
+                logger.warning("Roombaの状態を取得できませんでした")
+                return None
+
+            battery_level = state.get("batPct", 0)
+            device_name = state.get("name", "Roomba")
+
+            logger.info(f"デバイス: {device_name}, バッテリー残量: {battery_level}%")
+
+            return {"level": battery_level, "device_name": device_name}
+        finally:
             roomba.disconnect()
-            return None
-
-        battery_level = state.get("batPct", 0)
-        device_name = state.get("name", "Roomba")
-
-        logger.info(f"デバイス: {device_name}, バッテリー残量: {battery_level}%")
-
-        roomba.disconnect()
-
-        return {"level": battery_level, "device_name": device_name}
 
     except ImportError:
         logger.error("roombapyライブラリがインストールされていません")
