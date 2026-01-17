@@ -21,13 +21,7 @@
 
 #### 必要な環境変数（GitHub Secrets）
 
-- `ROOMBA_BLID`: Roombaのユーザー名（BLID）
-- `ROOMBA_PASSWORD`: Roombaのパスワード
-- `SMTP_SERVER`: SMTPサーバーのホスト名（例: smtp.gmail.com）
-- `SMTP_PORT`: SMTPサーバーのポート番号（通常は587）
-- `SMTP_USER`: SMTP認証用のユーザー名
-- `SMTP_PASSWORD`: SMTP認証用のパスワード
-- `NOTIFICATION_EMAIL`: 通知メールの送信先アドレス
+環境変数の詳細は [.env.example](../../.env.example) を参照してください。
 
 #### 動作の流れ
 
