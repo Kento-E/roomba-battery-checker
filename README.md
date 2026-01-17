@@ -157,10 +157,6 @@ Gmailを使用する場合は、アプリパスワードの生成が必要です
 - [rest980 (REST API)](https://github.com/koalazak/rest980)
 - [Home Assistant Roomba Integration](https://www.home-assistant.io/integrations/roomba/)
 
-## ライセンス
-
-MIT License
-
 ## 貢献
 
 プルリクエストを歓迎します。大きな変更の場合は、まずissueで変更内容を議論してください。
