@@ -2,9 +2,9 @@
   "name": "roomba-battery-checker",
   "version": "1.0.0",
   "description": "Roombaのバッテリー状態をチェックしてメール通知",
-  "main": "src/check_battery_cloud.js",
+  "main": "src/check_battery.js",
   "scripts": {
-    "check-battery": "node src/check_battery_cloud.js"
+    "check-battery": "node src/check_battery.js"
   },
   "keywords": ["roomba", "irobot", "battery", "notification"],
   "author": "",

@@ -1,4 +1,4 @@
-# クラウドAPI版の使用方法
+# セットアップガイド
 
 このドキュメントでは、非公式のiRobot Cloud APIを使用してGitHub Actionsから直接Roombaのバッテリー状態をチェックする方法を説明します。
 
@@ -52,29 +52,13 @@ RoombaのHOMEボタンを長押しして、ビープ音が鳴るまで待ちま�
 - `SMTP_PASSWORD`: SMTP認証用のパスワード
 - `NOTIFICATION_EMAIL`: 通知メールの送信先アドレス
 
-注意: クラウドAPI版では`ROOMBA_IP`は不要です。
-
-### 3. ワークフローの選択
-
-このリポジトリには2つのワークフローがあります：
-
-1. **check-battery.yml** (ローカルネットワーク版)
-   - Python + roombapyを使用
-   - ローカルネットワーク経由で接続
-   - セルフホステッドランナーまたはVPNが必要
-
-2. **check-battery-cloud.yml** (クラウドAPI版) ★推奨
-   - Node.js + dorita980を使用
-   - クラウドAPI経由で接続
-   - GitHub-hostedランナーから実行可能
-
-クラウドAPI版を使用する場合は、`.github/workflows/check-battery-cloud.yml`を有効にしてください。
+注意: ローカルIPアドレス（`ROOMBA_IP`）は不要です。
 
 ## 使い方
 
 ### スケジュール実行
 
-デフォルトのスケジュールは [.github/workflows/check-battery-cloud.yml](../.github/workflows/check-battery-cloud.yml#L4-L8) を参照してください。
+デフォルトのスケジュールは [.github/workflows/check-battery.yml](../.github/workflows/check-battery.yml#L4-L8) を参照してください。
 
 ### 手動実行
 
