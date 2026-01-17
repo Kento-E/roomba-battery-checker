@@ -125,13 +125,7 @@ npm run check-battery
 
 対応機種の詳細は[dorita980の公式ドキュメント](https://github.com/koalazak/dorita980#supported-robots)を参照してください。
 
-### Gmail SMTPの設定
 
-Gmailを使用する場合は、アプリパスワードの生成が必要です：
-
-1. Googleアカウントの2段階認証を有効化
-2. アプリパスワードを生成
-3. 生成されたパスワードを`SMTP_PASSWORD`に設定
 
 ## 参考資料
 
