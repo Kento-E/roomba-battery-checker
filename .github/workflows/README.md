@@ -92,23 +92,9 @@ roombapy discover
 4. `src/check_battery.py`を実行してRoombaのバッテリー状態を確認
 5. バッテリーが100%でない場合、設定されたメールアドレスに通知を送信
 
-#### Secretsの設定方法
-
-1. GitHubリポジトリのSettingsタブを開く
-2. 左メニューから「Secrets and variables」→「Actions」を選択
-3. 「New repository secret」をクリック
-4. 上記の環境変数を一つずつ追加
-
 #### スケジュールのカスタマイズ
 
 実行時刻を変更したい場合は、各ワークフローファイルの`cron`式を編集してください：
 
 - クラウドAPI版: [check-battery-cloud.yml](check-battery-cloud.yml#L6)
 - ローカルネットワーク版: [check-battery.yml](check-battery.yml#L6)
-
-cron式の形式: `分 時 日 月 曜日`（すべてUTC時刻、曜日は0=日曜日、1=月曜日...）
-
-参考例：
-- `30 21 * * 0,2,4`: 毎週日・火・木曜日UTC 21:30（JST 翌日月・水・金曜日6:30）
-- `0 0 * * *`: 毎日UTC 0時（JST 9時）
-- `0 9 * * 1`: 毎週月曜日UTC 9時（JST 18時）
