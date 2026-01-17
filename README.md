@@ -77,7 +77,21 @@ GitHub ActionsのActionsタブから「Roombaバッテリーチェック」ワ�
 
 ## ローカルでの実行
 
-環境変数を設定してローカルでも実行できます：
+### 方法1: スクリプトを使用（推奨）
+
+```bash
+# 1. .env.exampleをコピーして.envを作成
+cp .env.example .env
+
+# 2. .envファイルを編集して認証情報を設定
+nano .env  # または任意のエディタで編集
+
+# 3. スクリプトを実行
+chmod +x run_local.sh
+./run_local.sh
+```
+
+### 方法2: 環境変数を手動で設定
 
 ```bash
 # 依存関係をインストール
