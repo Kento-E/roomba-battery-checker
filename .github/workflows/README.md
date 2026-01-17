@@ -6,13 +6,7 @@
 
 ### Roombaバッテリーチェック - check-battery.yml
 
-非公式のiRobot Cloud APIを使用して、GitHub-hostedランナーから直接Roombaのバッテリー状態をチェックします。
-
-#### メリット
-
-- セルフホステッドランナーやVPNの設定が不要
-- GitHub Actionsから直接実行可能
-- どこからでもアクセス可能
+非公式のiRobot Cloud APIを使用して、GitHub-hostedランナーから直接Roombaのバッテリー状態をチェックします。セルフホステッドランナーやVPNの設定が不要で、どこからでもアクセス可能です。
 
 #### トリガー条件
 
