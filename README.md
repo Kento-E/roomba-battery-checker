@@ -129,19 +129,19 @@ npm run check-battery
 
 このツールは`dorita980`ライブラリを使用してiRobot Cloud APIにアクセスします。
 
-**対応機種:**
-- Roomba 900シリーズ（980, 960など）
-- Roomba i, s, jシリーズ（i3, i7, s9, j7, j9など）
-- Roomba Comboシリーズ（j7+, j9+など - 吸引＋モップ機能搭載モデル）
-- **Wi-Fi対応かつiRobot Homeアプリで管理可能な全モデル**
+**対応の判断基準:**
 
-**非対応機種:**
-- Roomba 100シリーズ（Wi-Fi非対応の古いモデル）
-- Roomba 500, 600, 700, 800シリーズの一部（Wi-Fi非対応モデル）
-- Wi-Fi機能を持たないモデル全般
+1. **iRobot Homeアプリで操作可能か**: [iRobot Homeアプリ](https://play.google.com/store/apps/details?id=com.irobot.home.prime)で管理できるRoombaであれば、基本的に対応しています
+2. **Wi-Fi接続が可能か**: インターネット経由でクラウドAPIにアクセスするため、Wi-Fi対応モデルである必要があります
 
-**確認方法:**
-お使いのRoombaがiRobot Homeアプリ（スマートフォンアプリ）で管理できる場合は、このツールが使用できます。
+**dorita980公式ドキュメントによる対応機種:**
+- Roomba 600/700/800シリーズ（Wi-Fi対応モデル）
+- Roomba 900シリーズ（960, 980など）
+- Roomba e5シリーズ
+- Roomba i7/i7+シリーズ
+- Braava m6
+
+**注意:** jシリーズ（j5, j7, j9など）やComboシリーズは、iRobotの認証方法変更により動作しない可能性があります。最新の対応状況は[dorita980の公式ドキュメント](https://github.com/koalazak/dorita980#readme)を参照してください。
 
 ### Gmail SMTPの設定
 
