@@ -7,6 +7,12 @@ on:
     # cron形式: '分 時 日 月 曜日' (UTC時刻、曜日: 0=日曜日)
     - cron: '30 21 * * 0,2,4'
   workflow_dispatch:  # 手動実行も可能
+    inputs:
+      force_notification:
+        description: '100%でも通知する（疎通確認用）'
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   check-battery:
@@ -35,4 +41,5 @@ jobs:
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           NOTIFICATION_EMAIL: ${{ secrets.NOTIFICATION_EMAIL }}
+          FORCE_NOTIFICATION: ${{ github.event.inputs.force_notification }}
         run: npm run check-battery

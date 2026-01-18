@@ -9,6 +9,7 @@ const SMTP_PORT = process.env.SMTP_PORT || '587';
 const SMTP_USER = process.env.SMTP_USER;
 const SMTP_PASSWORD = process.env.SMTP_PASSWORD;
 const NOTIFICATION_EMAIL = process.env.NOTIFICATION_EMAIL;
+const FORCE_NOTIFICATION = process.env.FORCE_NOTIFICATION === 'true';
 
 // 環境変数のチェック
 if (!BLID || !PASSWORD) {
@@ -81,9 +82,13 @@ async function main() {
 
     console.log(`デバイス: ${deviceName}, バッテリー残量: ${batteryLevel}%`);
 
-    // バッテリーが100%でない場合はメール通知
-    if (batteryLevel < 100) {
-      console.log(`バッテリー残量が${batteryLevel}%です。メール通知を送信します`);
+    // バッテリーが100%でない場合、または強制通知フラグがONの場合はメール通知
+    if (batteryLevel < 100 || FORCE_NOTIFICATION) {
+      if (FORCE_NOTIFICATION && batteryLevel === 100) {
+        console.log('強制通知フラグがONです。バッテリー残量100%ですが通知を送信します（疎通確認）');
+      } else {
+        console.log(`バッテリー残量が${batteryLevel}%です。メール通知を送信します`);
+      }
       await sendNotification(batteryLevel, deviceName);
     } else {
       console.log(`バッテリー残量は${batteryLevel}%です。通知は不要です`);
