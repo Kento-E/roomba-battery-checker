@@ -33,7 +33,7 @@ if (Number.isNaN(parsedSmtpPort)) {
 const SMTP_PORT_NUMBER = parsedSmtpPort;
 
 // メール送信関数
-async function sendNotification(batteryLevel, deviceName, isForceNotification = false) {
+async function sendNotification(batteryLevel, deviceName, statusMessage) {
   const transporter = nodemailer.createTransport({
     host: SMTP_SERVER,
     port: SMTP_PORT_NUMBER,
@@ -44,11 +44,6 @@ async function sendNotification(batteryLevel, deviceName, isForceNotification = 
       pass: SMTP_PASSWORD
     }
   });
-
-  // 強制通知の場合とバッテリー不足の場合でメッセージを変更
-  const statusMessage = isForceNotification && batteryLevel === 100
-    ? 'バッテリーは満充電されています。\nこのメールは疎通確認のための強制通知です。'
-    : 'バッテリーが100%ではないため、清掃スケジュールの実行に影響する可能性があります。\n充電を確認してください。';
 
   const bodyMessage = `${deviceName}のバッテリー状態をお知らせします。
 
@@ -100,13 +95,14 @@ async function main() {
     console.log(`デバイス: ${deviceName}, バッテリー残量: ${batteryLevel}%`);
 
     // バッテリーが100%でない場合、または強制通知フラグがONの場合はメール通知
-    if (batteryLevel < 100 || FORCE_NOTIFICATION) {
-      if (FORCE_NOTIFICATION && batteryLevel === 100) {
-        console.log('強制通知フラグがONです。バッテリー残量100%ですが通知を送信します（疎通確認）');
-      } else {
-        console.log(`バッテリー残量が${batteryLevel}%です。メール通知を送信します`);
-      }
-      await sendNotification(batteryLevel, deviceName, FORCE_NOTIFICATION);
+    if (batteryLevel < 100) {
+      console.log(`バッテリー残量が${batteryLevel}%です。メール通知を送信します`);
+      const statusMessage = 'バッテリーが100%ではないため、清掃スケジュールの実行に影響する可能性があります。\n充電を確認してください。';
+      await sendNotification(batteryLevel, deviceName, statusMessage);
+    } else if (FORCE_NOTIFICATION) {
+      console.log('強制通知フラグがONです。バッテリー残量100%ですが通知を送信します（疎通確認）');
+      const statusMessage = 'バッテリーは満充電されています。\nこのメールは疎通確認のための強制通知です。';
+      await sendNotification(batteryLevel, deviceName, statusMessage);
     } else {
       console.log(`バッテリー残量は${batteryLevel}%です。通知は不要です`);
     }
