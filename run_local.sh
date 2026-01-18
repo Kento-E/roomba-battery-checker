@@ -25,11 +25,8 @@ if [ ! -f .env ]; then
     exit 1
 fi
 
-# .envファイルから環境変数を読み込む
 echo "環境変数を.envから読み込み中..."
-set -a
-. .env
-set +a
+set -a; . .env; set +a
 
 # 依存関係をインストール（node_modulesがない場合のみ）
 if [ ! -d "node_modules" ]; then

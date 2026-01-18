@@ -25,15 +25,21 @@ if (!SMTP_SERVER || !SMTP_USER || !SMTP_PASSWORD || !NOTIFICATION_EMAIL) {
 
 // メール送信関数
 async function sendNotification(batteryLevel, deviceName) {
-  const parsedSmtpPort = parseInt(SMTP_PORT, 10);
-  if (Number.isNaN(parsedSmtpPort)) {
-    console.error('警告: 無効なSMTPポート番号が設定されています。デフォルトポート587を使用します。');
+  // SMTPポート番号の検証とデフォルト値設定
+  let SMTP_PORT_NUMBER = 587; // デフォルト値（STARTTLS用）
+  if (SMTP_PORT) {
+    const parsedSmtpPort = parseInt(SMTP_PORT, 10);
+    if (Number.isNaN(parsedSmtpPort)) {
+      console.error('エラー: 無効なSMTPポート番号が設定されています:', SMTP_PORT);
+      process.exit(1);
+    }
+    SMTP_PORT_NUMBER = parsedSmtpPort;
   }
-  const SMTP_PORT_NUMBER = Number.isNaN(parsedSmtpPort) ? 587 : parsedSmtpPort;
 
   const transporter = nodemailer.createTransport({
     host: SMTP_SERVER,
     port: SMTP_PORT_NUMBER,
+    // ポート465はSSL/TLS、ポート587はSTARTTLSを使用
     secure: SMTP_PORT_NUMBER === 465,
     auth: {
       user: SMTP_USER,
@@ -43,6 +49,7 @@ async function sendNotification(batteryLevel, deviceName) {
 
   const mailOptions = {
     from: SMTP_USER,
+    // カンマ区切りで複数のメールアドレスに送信可能
     to: NOTIFICATION_EMAIL,
     subject: `[Roomba通知] ${deviceName}のバッテリー残量が${batteryLevel}%です`,
     text: `${deviceName}のバッテリー状態をお知らせします。
