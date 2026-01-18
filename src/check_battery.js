@@ -45,19 +45,15 @@ async function sendNotification(batteryLevel, deviceName, isForceNotification = 
   });
 
   // 強制通知の場合とバッテリー不足の場合でメッセージを変更
-  const bodyMessage = isForceNotification && batteryLevel === 100
-    ? `${deviceName}のバッテリー状態をお知らせします。
+  const statusMessage = isForceNotification && batteryLevel === 100
+    ? 'バッテリーは満充電されています。\nこのメールは疎通確認のための強制通知です。'
+    : 'バッテリーが100%ではないため、清掃スケジュールの実行に影響する可能性があります。\n充電を確認してください。';
+
+  const bodyMessage = `${deviceName}のバッテリー状態をお知らせします。
 
 現在のバッテリー残量: ${batteryLevel}%
 
-バッテリーは満充電されています。
-このメールは疎通確認のための強制通知です。`
-    : `${deviceName}のバッテリー状態をお知らせします。
-
-現在のバッテリー残量: ${batteryLevel}%
-
-バッテリーが100%ではないため、清掃スケジュールの実行に影響する可能性があります。
-充電を確認してください。`;
+${statusMessage}`;
 
   const mailOptions = {
     from: SMTP_USER,
