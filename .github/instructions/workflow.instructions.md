@@ -24,14 +24,14 @@ GitHub Actionsワークフローを作成・編集する際は、以下のルー
 ```yaml
 - name: Roombaバッテリーをチェック
   env:
-    IROBOT_EMAIL: ${{ secrets.IROBOT_EMAIL }}
-    IROBOT_PASSWORD: ${{ secrets.IROBOT_PASSWORD }}
+    ROOMBA_BLID: ${{ secrets.ROOMBA_BLID }}
+    ROOMBA_PASSWORD: ${{ secrets.ROOMBA_PASSWORD }}
     SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
     SMTP_PORT: ${{ secrets.SMTP_PORT }}
     SMTP_USER: ${{ secrets.SMTP_USER }}
     SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
     NOTIFICATION_EMAIL: ${{ secrets.NOTIFICATION_EMAIL }}
-  run: python src/check_battery.py
+  run: node src/check_battery.js
 ```
 
 ## ワークフロー作成時のチェックリスト

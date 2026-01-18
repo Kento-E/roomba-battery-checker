@@ -27,7 +27,9 @@ fi
 
 # .envファイルから環境変数を読み込む
 echo "環境変数を.envから読み込み中..."
-export $(cat .env | grep -v '^#' | xargs)
+set -a
+. .env
+set +a
 
 # 依存関係をインストール（node_modulesがない場合のみ）
 if [ ! -d "node_modules" ]; then

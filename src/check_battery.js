@@ -25,10 +25,16 @@ if (!SMTP_SERVER || !SMTP_USER || !SMTP_PASSWORD || !NOTIFICATION_EMAIL) {
 
 // メール送信関数
 async function sendNotification(batteryLevel, deviceName) {
+  const parsedSmtpPort = parseInt(SMTP_PORT, 10);
+  if (Number.isNaN(parsedSmtpPort)) {
+    console.error('警告: 無効なSMTPポート番号が設定されています。デフォルトポート587を使用します。');
+  }
+  const SMTP_PORT_NUMBER = Number.isNaN(parsedSmtpPort) ? 587 : parsedSmtpPort;
+
   const transporter = nodemailer.createTransport({
     host: SMTP_SERVER,
-    port: parseInt(SMTP_PORT),
-    secure: false,
+    port: SMTP_PORT_NUMBER,
+    secure: SMTP_PORT_NUMBER === 465,
     auth: {
       user: SMTP_USER,
       pass: SMTP_PASSWORD

@@ -2,25 +2,33 @@
 
 このプロジェクトでコードを作成・編集する際は、以下のルールを厳守してください。
 
+## プロジェクト言語
+
+このプロジェクトは **Node.js (JavaScript)** を使用しています。
+
 ## エラーハンドリング
 
 ### 必須チェック項目
 
-- **リストや配列へのアクセス前に空チェックを実施**
-  - `list[0]`のようなアクセスの前に、必ず`if not list:`または`if len(list) > 0:`でチェック
-  - 例: `if devices: first_device = devices[0]`
+- **配列へのアクセス前に空チェックを実施**
+  - `array[0]`のようなアクセスの前に、必ず`if (!array || array.length === 0)`でチェック
+  - 例: `if (devices && devices.length > 0) { const firstDevice = devices[0]; }`
 
-- **外部API呼び出しは必ずtry-exceptで囲む**
+- **外部API呼び出しは必ずtry-catchで囲む**
   - ネットワークエラー、認証エラー、タイムアウトなどを考慮
-  - 例: `try: response = api.call() except Exception as e: logger.error(f"API error: {e}")`
+  - 例: `try { const response = await api.call(); } catch (error) { console.error('API error:', error); }`
 
-- **`dict.get()`でデフォルト値を指定し、Noneチェックを追加**
-  - `dict.get(key, default_value)`を使用してNone回避
-  - 取得後も値が空でないことを確認
+- **オブジェクトプロパティアクセスでデフォルト値を指定**
+  - オプショナルチェーン（`?.`）とnullish coalescing（`??`）を使用
+  - 例: `const value = obj?.property ?? defaultValue;`
+
+- **非同期処理は必ずawaitまたはPromiseチェーンで適切に処理**
+  - Promiseベースの処理は必ず完了を待つ
+  - 例: `await robot.end();` （`robot.end();`だけでは不完全）
 
 - **ファイル・ディレクトリ操作前に存在確認**
-  - ディレクトリ作成: `os.makedirs(path, exist_ok=True)`
-  - ファイル存在確認: `if os.path.exists(file_path):`
+  - ファイル存在確認: `if (fs.existsSync(filePath))`
+  - ディレクトリ作成: `fs.mkdirSync(path, { recursive: true })`
 
 ## コード品質
 
@@ -29,22 +37,25 @@
 **コード変更後は必ずリンターを実行してコミットすること**
 
 ```bash
-# Pythonの場合
-black src/
-flake8 src/
+# Node.jsの場合（このプロジェクト）
+npm run lint
+
+# 自動修正
+npm run lint:fix
 
 # 個別ファイルの場合
-black src/check_battery.py
-flake8 src/check_battery.py
+npx eslint src/check_battery.js
+npx prettier --write src/check_battery.js
 ```
 
 ### 基本ルール
 
 - **未使用の変数・importは削除すること**
-  - コミット前にリンター（flake8/pylint）を実行して確認
+  - コミット前にリンター（ESLint）を実行して確認
 
 - **変数名は明確に**
-  - 目的が分かる名前を使用（例: `battery_level`はバッテリー残量と分かる）
+  - 目的が分かる名前を使用（例: `batteryLevel`はバッテリー残量と分かる）
+  - camelCaseを使用（JavaScriptの慣習）
 
 - **コメントは必要に応じて追加**
   - 複雑なロジックには説明コメントを追加
@@ -58,29 +69,30 @@ flake8 src/check_battery.py
 
 ### リンター・フォーマッター
 
-- **flake8**: Pythonコードの静的解析
-- **black**: コードの自動フォーマット
+- **ESLint**: JavaScriptコードの静的解析
+- **Prettier**: コードの自動フォーマット
 
 ### 使用方法
 
 ```bash
 # インストール
-pip install flake8 black
+npm install --save-dev eslint prettier
 
 # 実行
-flake8 src/
-black src/
+npx eslint src/
+npx prettier --write src/
 ```
 
 ## チェックリスト
 
 コード作成・変更時は以下を確認：
 
-- [ ] リスト・配列アクセス前に空チェックを実施したか
-- [ ] 外部API呼び出しをtry-exceptで囲んだか
+- [ ] 配列アクセス前に空チェックを実施したか
+- [ ] 外部API呼び出しをtry-catchで囲んだか
+- [ ] 非同期処理をawaitで適切に待機しているか
 - [ ] ファイル・ディレクトリ操作前に存在確認したか
 - [ ] 未使用の変数・importを削除したか
-- [ ] 変数名は明確か
+- [ ] 変数名は明確か（camelCase使用）
 - [ ] 機密情報をコードに含めていないか
 - [ ] リンターでエラーがないか確認したか
 
