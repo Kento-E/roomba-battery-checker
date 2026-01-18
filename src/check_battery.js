@@ -78,10 +78,27 @@ async function main() {
   const robot = new dorita980.Cloud(BLID, PASSWORD);
 
   try {
-    // クラウド経由でRoombaに接続
+    // クラウド経由でRoombaに接続（30秒タイムアウト）
     await new Promise((resolve, reject) => {
-      robot.on('connect', resolve);
-      robot.on('error', reject);
+      const timeout = setTimeout(() => {
+        robot.removeAllListeners();
+        reject(new Error('Roombaへの接続がタイムアウトしました（30秒）'));
+      }, 30000);
+
+      const onConnect = () => {
+        clearTimeout(timeout);
+        robot.removeListener('error', onError);
+        resolve();
+      };
+
+      const onError = (err) => {
+        clearTimeout(timeout);
+        robot.removeListener('connect', onConnect);
+        reject(err);
+      };
+
+      robot.once('connect', onConnect);
+      robot.once('error', onError);
     });
 
     console.log('Roombaに接続しました');
