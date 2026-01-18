@@ -8,6 +8,7 @@ const SMTP_SERVER = process.env.SMTP_SERVER;
 const SMTP_PORT = process.env.SMTP_PORT || '587';
 const SMTP_USER = process.env.SMTP_USER;
 const SMTP_PASSWORD = process.env.SMTP_PASSWORD;
+const SEND_FROM = process.env.SEND_FROM;
 const SEND_TO = process.env.SEND_TO;
 const FORCE_NOTIFICATION = process.env.FORCE_NOTIFICATION === 'true';
 
@@ -56,7 +57,7 @@ async function sendNotification(batteryLevel, deviceName, isForceNotification = 
 ${statusMessage}`;
 
   const mailOptions = {
-    from: SMTP_USER,
+    from: SEND_FROM || SMTP_USER,
     // カンマ区切りで複数のメールアドレスに送信可能
     to: SEND_TO,
     subject: `[Roomba通知] ${deviceName}のバッテリー残量が${batteryLevel}%です`,
