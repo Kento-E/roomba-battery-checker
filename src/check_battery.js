@@ -94,11 +94,11 @@ async function main() {
       console.log(`バッテリー残量は${batteryLevel}%です。通知は不要です`);
     }
 
-    robot.end();
+    await robot.end();
     console.log('バッテリーチェック完了');
   } catch (error) {
     console.error('エラーが発生しました:', error);
-    robot.end();
+    await robot.end();
     process.exit(1);
   }
 }
