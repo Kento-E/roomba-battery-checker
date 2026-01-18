@@ -37,10 +37,10 @@ Roombaの充電状態を定期確認するツール🔋
 npm install -g dorita980
 
 # BLIDとパスワードを取得
-get-roomba-password-cloud
+get-roomba-password-cloud <iRobotアカウントのメールアドレス> <パスワード>
 ```
 
-実行中にiRobotアプリの認証情報（メールアドレスとパスワード）を入力します。
+※ `<iRobotアカウントのメールアドレス>`と`<パスワード>`は、iRobot Homeアプリにログインする際のメールアドレスとパスワードを指定してください。
 
 #### roombapyを使用（代替手段）
 
@@ -107,8 +107,6 @@ chmod +x run_local.sh
 このツールは[dorita980](https://github.com/koalazak/dorita980)ライブラリを使用しています。
 
 対応機種の詳細は[dorita980の公式ドキュメント](https://github.com/koalazak/dorita980#supported-robots)を参照してください。
-
-
 
 ## 参考資料
 

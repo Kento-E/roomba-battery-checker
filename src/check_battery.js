@@ -23,19 +23,16 @@ if (!SMTP_SERVER || !SMTP_USER || !SMTP_PASSWORD || !NOTIFICATION_EMAIL) {
   process.exit(1);
 }
 
-// メール送信関数
-async function sendNotification(batteryLevel, deviceName) {
-  // SMTPポート番号の検証とデフォルト値設定
-  let SMTP_PORT_NUMBER = 587; // デフォルト値（STARTTLS用）
-  if (SMTP_PORT) {
-    const parsedSmtpPort = parseInt(SMTP_PORT, 10);
-    if (Number.isNaN(parsedSmtpPort)) {
-      console.error('エラー: 無効なSMTPポート番号が設定されています:', SMTP_PORT);
-      process.exit(1);
-    }
-    SMTP_PORT_NUMBER = parsedSmtpPort;
-  }
+// SMTPポート番号の検証とデフォルト値設定
+const parsedSmtpPort = parseInt(SMTP_PORT, 10);
+if (Number.isNaN(parsedSmtpPort)) {
+  console.error('エラー: 無効なSMTPポート番号が設定されています:', SMTP_PORT);
+  process.exit(1);
+}
+const SMTP_PORT_NUMBER = parsedSmtpPort;
 
+// メール送信関数
+async function sendNotification(batteryLevel, deviceName, isForceNotification = false) {
   const transporter = nodemailer.createTransport({
     host: SMTP_SERVER,
     port: SMTP_PORT_NUMBER,
@@ -47,17 +44,27 @@ async function sendNotification(batteryLevel, deviceName) {
     }
   });
 
+  // 強制通知の場合とバッテリー不足の場合でメッセージを変更
+  const bodyMessage = isForceNotification && batteryLevel === 100
+    ? `${deviceName}のバッテリー状態をお知らせします。
+
+現在のバッテリー残量: ${batteryLevel}%
+
+バッテリーは満充電されています。
+このメールは疎通確認のための強制通知です。`
+    : `${deviceName}のバッテリー状態をお知らせします。
+
+現在のバッテリー残量: ${batteryLevel}%
+
+バッテリーが100%ではないため、清掃スケジュールの実行に影響する可能性があります。
+充電を確認してください。`;
+
   const mailOptions = {
     from: SMTP_USER,
     // カンマ区切りで複数のメールアドレスに送信可能
     to: NOTIFICATION_EMAIL,
     subject: `[Roomba通知] ${deviceName}のバッテリー残量が${batteryLevel}%です`,
-    text: `${deviceName}のバッテリー状態をお知らせします。
-
-現在のバッテリー残量: ${batteryLevel}%
-
-バッテリーが100%ではないため、清掃スケジュールの実行に影響する可能性があります。
-充電を確認してください。
+    text: `${bodyMessage}
 
 ---
 このメールは自動送信されています。`
@@ -102,7 +109,7 @@ async function main() {
       } else {
         console.log(`バッテリー残量が${batteryLevel}%です。メール通知を送信します`);
       }
-      await sendNotification(batteryLevel, deviceName);
+      await sendNotification(batteryLevel, deviceName, FORCE_NOTIFICATION);
     } else {
       console.log(`バッテリー残量は${batteryLevel}%です。通知は不要です`);
     }
@@ -111,7 +118,13 @@ async function main() {
     console.log('バッテリーチェック完了');
   } catch (error) {
     console.error('エラーが発生しました:', error);
-    await robot.end();
+    try {
+      if (robot && typeof robot.end === 'function') {
+        await robot.end();
+      }
+    } catch (endError) {
+      console.error('robot.end() の実行中にエラーが発生しました:', endError);
+    }
     process.exit(1);
   }
 }
