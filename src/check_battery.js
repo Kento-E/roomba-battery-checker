@@ -8,7 +8,7 @@ const SMTP_SERVER = process.env.SMTP_SERVER;
 const SMTP_PORT = process.env.SMTP_PORT || '587';
 const SMTP_USER = process.env.SMTP_USER;
 const SMTP_PASSWORD = process.env.SMTP_PASSWORD;
-const NOTIFICATION_EMAIL = process.env.NOTIFICATION_EMAIL;
+const SEND_TO = process.env.SEND_TO;
 const FORCE_NOTIFICATION = process.env.FORCE_NOTIFICATION === 'true';
 
 // 環境変数のチェック
@@ -17,9 +17,9 @@ if (!BLID || !PASSWORD) {
   process.exit(1);
 }
 
-if (!SMTP_SERVER || !SMTP_USER || !SMTP_PASSWORD || !NOTIFICATION_EMAIL) {
+if (!SMTP_SERVER || !SMTP_USER || !SMTP_PASSWORD || !SEND_TO) {
   console.error('エラー: SMTP設定が不完全です');
-  console.error('必要な環境変数: SMTP_SERVER, SMTP_USER, SMTP_PASSWORD, NOTIFICATION_EMAIL');
+  console.error('必要な環境変数: SMTP_SERVER, SMTP_USER, SMTP_PASSWORD, SEND_TO');
   process.exit(1);
 }
 
@@ -58,7 +58,7 @@ ${statusMessage}`;
   const mailOptions = {
     from: SMTP_USER,
     // カンマ区切りで複数のメールアドレスに送信可能
-    to: NOTIFICATION_EMAIL,
+    to: SEND_TO,
     subject: `[Roomba通知] ${deviceName}のバッテリー残量が${batteryLevel}%です`,
     text: `${bodyMessage}
 
@@ -68,7 +68,7 @@ ${statusMessage}`;
 
   try {
     await transporter.sendMail(mailOptions);
-    console.log(`通知メールを ${NOTIFICATION_EMAIL} に送信しました`);
+    console.log(`通知メールを ${SEND_TO} に送信しました`);
   } catch (error) {
     console.error('メール送信エラー:', error);
     throw error;

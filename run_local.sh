@@ -20,7 +20,7 @@ if [ ! -f .env ]; then
     echo "SMTP_PORT=587"
     echo "SMTP_USER=smtp_user"
     echo "SMTP_PASSWORD=smtp_password"
-    echo "NOTIFICATION_EMAIL=notification@email.com"
+    echo "SEND_TO=notification@email.com"
     echo ""
     exit 1
 fi
