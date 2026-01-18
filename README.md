@@ -85,25 +85,6 @@ chmod +x run_local.sh
 ./run_local.sh
 ```
 
-### 方法2: 環境変数を手動で設定
-
-```bash
-# 依存関係をインストール
-npm install
-
-# 環境変数を設定
-export ROOMBA_BLID="your_blid"
-export ROOMBA_PASSWORD="your_password"
-export SMTP_SERVER="smtp.gmail.com"
-export SMTP_PORT="587"
-export SMTP_USER="smtp_user"
-export SMTP_PASSWORD="smtp_password"
-export NOTIFICATION_EMAIL="notification@email.com"
-
-# スクリプトを実行
-npm run check-battery
-```
-
 ## トラブルシューティング
 
 ### 接続エラー
