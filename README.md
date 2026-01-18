@@ -28,7 +28,7 @@ Roombaの充電状態を定期確認するツール🔋
 
 クラウドAPI経由でアクセスするには、RoombaのBLIDとパスワードが必要です。
 
-#### 方法1: dorita980を使用（推奨）
+#### dorita980を使用（推奨）
 
 ```bash
 # dorita980をインストール
@@ -40,7 +40,7 @@ get-roomba-password-cloud
 
 実行中にiRobotアプリの認証情報（メールアドレスとパスワード）を入力します。
 
-#### 方法2: roombapyを使用
+#### roombapyを使用（代替手段）
 
 ```bash
 pip install roombapy
@@ -71,7 +71,7 @@ GitHub ActionsのActionsタブから「Roombaバッテリーチェック」ワ�
 
 ## ローカルでの実行
 
-### 方法1: スクリプトを使用（推奨）
+### スクリプトを使用
 
 ```bash
 # 1. .env.exampleをコピーして.envを作成
