@@ -113,7 +113,3 @@ chmod +x run_local.sh
 - [dorita980 (Node.js SDK)](https://github.com/koalazak/dorita980)
 - [rest980 (REST API)](https://github.com/koalazak/rest980)
 - [Home Assistant Roomba Integration](https://www.home-assistant.io/integrations/roomba/)
-
-## 貢献
-
-プルリクエストを歓迎します。大きな変更の場合は、まずissueで変更内容を議論してください。
