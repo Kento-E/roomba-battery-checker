@@ -42,5 +42,5 @@ jobs:
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           SEND_FROM: ${{ secrets.SEND_FROM }}
           SEND_TO: ${{ secrets.SEND_TO }}
-          FORCE_NOTIFICATION: ${{ github.event.inputs.force_notification }}
+          FORCE_NOTIFICATION: ${{ github.event.inputs.force_notification || 'false' }}
         run: npm run check-battery
