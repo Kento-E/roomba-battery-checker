@@ -116,9 +116,7 @@ async function main() {
   } catch (error) {
     console.error('エラーが発生しました:', error);
     try {
-      if (robot && typeof robot.end === 'function') {
-        await robot.end();
-      }
+      await robot.end();
     } catch (endError) {
       console.error('robot.end() の実行中にエラーが発生しました:', endError);
     }
