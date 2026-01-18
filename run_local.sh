@@ -36,4 +36,9 @@ fi
 
 # スクリプトを実行
 echo "Roombaバッテリーチェックを実行中..."
-npm run check-battery
+if ! npm run check-battery; then
+    echo ""
+    echo "エラー: バッテリーチェックスクリプトの実行に失敗しました"
+    echo "上記のエラーメッセージを確認してください"
+    exit 1
+fi
