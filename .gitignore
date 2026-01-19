@@ -28,3 +28,8 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Test files
+test_workflow.js
+run_integration_test.sh
+TEST_REPORT.md
