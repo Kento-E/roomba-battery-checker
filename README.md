@@ -76,9 +76,9 @@ get-roomba-password
 
 GitHubリポジトリの **Settings** → **Secrets and variables** → **Actions** で、以下のSecretsを設定してください：
 
-- `ROOMBA_BLID`: Roombaのユーザー名（BLID）
-- `ROOMBA_PASSWORD`: Roombaのパスワード
-- `ROOMBA_IP`: RoombaのIPアドレス（例: 192.168.1.100）
+- `ROOMBA_BLID`: Roombaのユーザー名（BLID）（[取得方法](#2-roombaの認証情報とipアドレスを取得)）
+- `ROOMBA_PASSWORD`: Roombaのパスワード（[取得方法](#2-roombaの認証情報とipアドレスを取得)）
+- `ROOMBA_IP`: RoombaのIPアドレス（例: 192.168.1.100）（[確認方法](#roombaのipアドレスを確認)）
 - `SMTP_SERVER`: SMTPサーバーのホスト名
 - `SMTP_PORT`: SMTPポート番号（通常は587）
 - `SMTP_USER`: SMTP認証用のユーザー名
