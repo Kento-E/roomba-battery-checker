@@ -92,7 +92,7 @@ async function main() {
       throw new Error('バッテリー情報を取得できませんでした。APIレスポンスにbatPctが含まれていません。');
     }
     
-    // デバッグモードの場合のみバッテリーとデバイス情報の詳細をログ出力
+    // デバッグモードの場合のみAPIレスポンス構造（どのキーが存在するか）をログ出力
     if (process.env.DEBUG === 'true') {
       const statusObj = status || {};
       console.log('APIレスポンス構造:', {
