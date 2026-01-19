@@ -73,41 +73,41 @@ ${statusMessage}`;
 
 // メイン処理
 async function main() {
-  console.log('Roombaバッテリーチェックを開始します（クラウドAPI経由）');
+  console.log('Roombaバッテリーチェックを開始します（クラウドAPI v1経由）');
   
-  const robot = new dorita980.Cloud(BLID, PASSWORD);
+  const robot = new dorita980.Cloud(BLID, PASSWORD, 1);
 
   try {
-    // クラウド経由でRoombaに接続（30秒タイムアウト）
-    await new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        robot.removeAllListeners();
-        reject(new Error('Roombaへの接続がタイムアウトしました（30秒）'));
-      }, 30000);
-
-      const onConnect = () => {
-        clearTimeout(timeout);
-        robot.removeListener('error', onError);
-        resolve();
-      };
-
-      const onError = (err) => {
-        clearTimeout(timeout);
-        robot.removeListener('connect', onConnect);
-        reject(err);
-      };
-
-      robot.once('connect', onConnect);
-      robot.once('error', onError);
-    });
-
-    console.log('Roombaに接続しました');
-
-    // バッテリー状態を取得
-    const state = await robot.getRobotState(['batPct', 'name']);
+    console.log('Roomba状態を取得中...');
     
-    const batteryLevel = state.batPct || 0;
-    const deviceName = state.name || 'Roomba';
+    // v1 Cloud APIはgetStatus()メソッドを使用
+    const status = await robot.getStatus();
+    
+    console.log('取得したステータス:', JSON.stringify(status, null, 2));
+    
+    // v1 Cloud APIのレスポンス構造に基づいてバッテリー情報を抽出
+    // 一般的な構造: { batPct: number, robotname: string, ... }
+    // または { cleanMissionStatus: { batPct: number }, ... }
+    let batteryLevel = 0;
+    let deviceName = 'Roomba';
+    
+    if (status) {
+      // batPctが直接存在する場合
+      if (typeof status.batPct === 'number') {
+        batteryLevel = status.batPct;
+      }
+      // cleanMissionStatus内にある場合
+      else if (status.cleanMissionStatus && typeof status.cleanMissionStatus.batPct === 'number') {
+        batteryLevel = status.cleanMissionStatus.batPct;
+      }
+      
+      // デバイス名の取得
+      if (status.robotname) {
+        deviceName = status.robotname;
+      } else if (status.name) {
+        deviceName = status.name;
+      }
+    }
 
     console.log(`デバイス: ${deviceName}, バッテリー残量: ${batteryLevel}%`);
 
@@ -124,15 +124,9 @@ async function main() {
       console.log(`バッテリー残量は${batteryLevel}%です。通知は不要です`);
     }
 
-    await robot.end();
     console.log('バッテリーチェック完了');
   } catch (error) {
     console.error('エラーが発生しました:', error);
-    try {
-      await robot.end();
-    } catch (endError) {
-      console.error('robot.end() の実行中にエラーが発生しました:', endError);
-    }
     process.exit(1);
   }
 }
