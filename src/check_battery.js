@@ -1,4 +1,3 @@
-const dorita980 = require('dorita980');
 const nodemailer = require('nodemailer');
 
 // 環境変数から設定を読み込み
@@ -73,56 +72,29 @@ ${statusMessage}`;
 
 // メイン処理
 async function main() {
-  console.log('Roombaバッテリーチェックを開始します（クラウドAPI v1経由）');
+  console.error('❌ iRobot Cloud APIは廃止されました');
+  console.error('');
+  console.error('【問題】');
+  console.error('iRobotのCloud API（irobot.axeda.com）は2024年に廃止され、現在は利用できません。');
+  console.error('このため、GitHub Actionsからクラウド経由でRoombaにアクセスすることはできなくなりました。');
+  console.error('');
+  console.error('【代替案】');
+  console.error('1. セルフホステッドランナー + Local API');
+  console.error('   - Roombaと同じネットワーク上でGitHub Actionsセルフホステッドランナーを実行');
+  console.error('   - dorita980のLocal APIを使用（クラウド経由不要）');
+  console.error('   - 詳細: https://github.com/koalazak/dorita980#local-api');
+  console.error('');
+  console.error('2. rest980ブリッジサーバー');
+  console.error('   - Roombaと同じネットワーク上でrest980サーバーを実行');
+  console.error('   - GitHub ActionsからHTTP API経由でアクセス');
+  console.error('   - 詳細: https://github.com/koalazak/rest980');
+  console.error('');
+  console.error('【参考情報】');
+  console.error('- dorita980 GitHub: https://github.com/koalazak/dorita980');
+  console.error('- 関連Issue: https://github.com/koalazak/dorita980/issues/81');
+  console.error('');
   
-  const robot = new dorita980.Cloud(BLID, PASSWORD, 1);
-
-  try {
-    console.log('Roomba状態を取得中...');
-    
-    // v1 Cloud APIはgetStatus()メソッドを使用
-    const status = await robot.getStatus();
-    
-    // v1 Cloud APIのレスポンス構造に基づいてバッテリー情報を抽出
-    const batteryLevel = status?.cleanMissionStatus?.batPct ?? status?.batPct;
-    const deviceName = status?.robotname ?? status?.name ?? 'Roomba';
-    
-    // バッテリー情報が取得できない場合はエラー
-    if (batteryLevel === undefined || batteryLevel === null) {
-      throw new Error('バッテリー情報を取得できませんでした。APIレスポンスにbatPctが含まれていません。');
-    }
-    
-    // デバッグモードの場合のみAPIレスポンス構造（どのキーが存在するか）をログ出力
-    if (process.env.DEBUG === 'true') {
-      const statusObj = status || {};
-      console.log('APIレスポンス構造:', {
-        hasBatPct: 'batPct' in statusObj,
-        hasCleanMissionStatus: 'cleanMissionStatus' in statusObj,
-        hasRobotname: 'robotname' in statusObj,
-        hasName: 'name' in statusObj
-      });
-    }
-
-    console.log(`デバイス: ${deviceName}, バッテリー残量: ${batteryLevel}%`);
-
-    // バッテリーが100%でない場合、または強制通知フラグがONの場合はメール通知
-    if (batteryLevel < 100) {
-      console.log(`バッテリー残量が${batteryLevel}%です。メール通知を送信します`);
-      const statusMessage = 'バッテリーが100%ではないため、清掃スケジュールの実行に影響する可能性があります。\n充電を確認してください。';
-      await sendNotification(batteryLevel, deviceName, statusMessage);
-    } else if (FORCE_NOTIFICATION) {
-      console.log('強制通知フラグがONです。バッテリー残量100%ですが通知を送信します（疎通確認）');
-      const statusMessage = 'バッテリーは満充電されています。\nこのメールは疎通確認のための強制通知です。';
-      await sendNotification(batteryLevel, deviceName, statusMessage);
-    } else {
-      console.log(`バッテリー残量は${batteryLevel}%です。通知は不要です`);
-    }
-
-    console.log('バッテリーチェック完了');
-  } catch (error) {
-    console.error('エラーが発生しました:', error);
-    process.exit(1);
-  }
+  process.exit(1);
 }
 
 main();
