@@ -20,9 +20,9 @@ if (!BLID || !PASSWORD) {
 }
 
 // IPアドレスの形式チェック（指定されている場合のみ）
-if (ROOMBA_IP) {
-  const ipPattern = /^(\d{1,3}\.){3}\d{1,3}$/;
-  if (!ipPattern.test(ROOMBA_IP)) {
+if (ROOMBA_IP && ROOMBA_IP.trim() !== '') {
+  const ipPattern = /^(25[0-5]|2[0-4]\d|1?\d?\d)\.(25[0-5]|2[0-4]\d|1?\d?\d)\.(25[0-5]|2[0-4]\d|1?\d?\d)\.(25[0-5]|2[0-4]\d|1?\d?\d)$/;
+  if (!ipPattern.test(ROOMBA_IP.trim())) {
     console.error('エラー: ROOMBA_IPの形式が不正です。正しいIPアドレス（例: 192.168.1.100）を指定してください');
     process.exit(1);
   }
@@ -83,9 +83,10 @@ ${statusMessage}`;
 
 // Roomba IPアドレスを取得する関数（自動検出または手動指定）
 async function getRoombaIP() {
-  if (ROOMBA_IP) {
-    console.log(`指定されたIPアドレスを使用: ${ROOMBA_IP}`);
-    return ROOMBA_IP;
+  // 空文字列や空白のみの値は「未設定」とみなし、自動検出にフォールバックする
+  if (ROOMBA_IP && ROOMBA_IP.trim() !== '') {
+    console.log(`指定されたIPアドレスを使用: ${ROOMBA_IP.trim()}`);
+    return ROOMBA_IP.trim();
   }
 
   console.log('Roombaを自動検出中...');
