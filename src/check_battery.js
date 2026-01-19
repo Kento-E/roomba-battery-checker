@@ -78,7 +78,7 @@ async function main() {
   const robot = new dorita980.Cloud(BLID, PASSWORD);
 
   try {
-    // クラウド経由でRoombaに接続（30秒タイムアウト）
+    // クラウド経由でRoombaに接続
     await new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         robot.removeAllListeners();
