@@ -90,12 +90,21 @@ async function getRoombaIP() {
 
   console.log('Roombaを自動検出中...');
   return new Promise((resolve, reject) => {
+    let completed = false;
+    
     const timeout = setTimeout(() => {
-      reject(new Error('Roombaの自動検出がタイムアウトしました。ROOMBA_IP環境変数を設定してください。'));
+      if (!completed) {
+        completed = true;
+        reject(new Error('Roombaの自動検出がタイムアウトしました。ROOMBA_IP環境変数を設定してください。'));
+      }
     }, 10000); // 10秒でタイムアウト
 
     dorita980.getRobotIP((error, ip) => {
+      if (completed) return; // タイムアウト後の応答は無視
+      
+      completed = true;
       clearTimeout(timeout);
+      
       if (error) {
         reject(new Error(`Roombaの自動検出に失敗しました: ${error.message}`));
       } else {
