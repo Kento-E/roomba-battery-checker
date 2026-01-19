@@ -11,17 +11,20 @@ permissions:
 jobs:
   auto-merge:
     runs-on: ubuntu-latest
-    if: github.event.review.state == 'approved'
+    if: >
+      github.event.review.state == 'approved' &&
+      github.event.pull_request.head.repo.full_name == github.repository
     
     steps:
       - name: PR情報を表示
         env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_BASE: ${{ github.event.pull_request.base.ref }}
           PR_HEAD: ${{ github.event.pull_request.head.ref }}
           REVIEWER: ${{ github.event.review.user.login }}
         run: |
-          printf 'PR #%s: %s\n' "${{ github.event.pull_request.number }}" "${PR_TITLE}"
+          printf 'PR #%s: %s\n' "${PR_NUMBER}" "${PR_TITLE}"
           printf 'Base: %s\n' "${PR_BASE}"
           printf 'Head: %s\n' "${PR_HEAD}"
           printf 'Reviewer: %s\n' "${REVIEWER}"
