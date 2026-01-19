@@ -83,14 +83,19 @@ async function main() {
     // v1 Cloud APIはgetStatus()メソッドを使用
     const status = await robot.getStatus();
     
-    // デバッグモードの場合のみ完全なステータスをログ出力
-    if (process.env.DEBUG === 'true') {
-      console.log('取得したステータス:', JSON.stringify(status, null, 2));
-    }
-    
     // v1 Cloud APIのレスポンス構造に基づいてバッテリー情報を抽出
     const batteryLevel = status?.cleanMissionStatus?.batPct ?? status?.batPct ?? 0;
     const deviceName = status?.robotname ?? status?.name ?? 'Roomba';
+    
+    // デバッグモードの場合のみバッテリーとデバイス情報の詳細をログ出力
+    if (process.env.DEBUG === 'true') {
+      console.log('APIレスポンス構造:', {
+        hasBatPct: 'batPct' in (status || {}),
+        hasCleanMissionStatus: 'cleanMissionStatus' in (status || {}),
+        hasRobotname: 'robotname' in (status || {}),
+        hasName: 'name' in (status || {})
+      });
+    }
 
     console.log(`デバイス: ${deviceName}, バッテリー残量: ${batteryLevel}%`);
 
