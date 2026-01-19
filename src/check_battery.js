@@ -84,16 +84,22 @@ async function main() {
     const status = await robot.getStatus();
     
     // v1 Cloud APIのレスポンス構造に基づいてバッテリー情報を抽出
-    const batteryLevel = status?.cleanMissionStatus?.batPct ?? status?.batPct ?? 0;
+    const batteryLevel = status?.cleanMissionStatus?.batPct ?? status?.batPct;
     const deviceName = status?.robotname ?? status?.name ?? 'Roomba';
+    
+    // バッテリー情報が取得できない場合はエラー
+    if (batteryLevel === undefined || batteryLevel === null) {
+      throw new Error('バッテリー情報を取得できませんでした。APIレスポンスにbatPctが含まれていません。');
+    }
     
     // デバッグモードの場合のみバッテリーとデバイス情報の詳細をログ出力
     if (process.env.DEBUG === 'true') {
+      const statusObj = status || {};
       console.log('APIレスポンス構造:', {
-        hasBatPct: 'batPct' in (status || {}),
-        hasCleanMissionStatus: 'cleanMissionStatus' in (status || {}),
-        hasRobotname: 'robotname' in (status || {}),
-        hasName: 'name' in (status || {})
+        hasBatPct: 'batPct' in statusObj,
+        hasCleanMissionStatus: 'cleanMissionStatus' in statusObj,
+        hasRobotname: 'robotname' in statusObj,
+        hasName: 'name' in statusObj
       });
     }
 
