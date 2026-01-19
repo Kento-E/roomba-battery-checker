@@ -13,20 +13,13 @@ jobs:
     if: github.event.pull_request.merged == true
     
     steps:
-      - name: ブランチ情報を取得
-        id: branch_info
-        run: |
-          echo "head_ref=${{ github.event.pull_request.head.ref }}" >> $GITHUB_OUTPUT
-          echo "base_ref=${{ github.event.pull_request.base.ref }}" >> $GITHUB_OUTPUT
-          echo "pr_number=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
-
       - name: ブランチを削除
         uses: actions/github-script@v8
         with:
           script: |
-            const headRef = '${{ steps.branch_info.outputs.head_ref }}';
-            const baseRef = '${{ steps.branch_info.outputs.base_ref }}';
-            const prNumber = '${{ steps.branch_info.outputs.pr_number }}';
+            const headRef = context.payload.pull_request.head.ref;
+            const baseRef = context.payload.pull_request.base.ref;
+            const prNumber = context.payload.pull_request.number;
             
             console.log(`PR #${prNumber} がマージされました`);
             console.log(`ブランチ: ${headRef} -> ${baseRef}`);
