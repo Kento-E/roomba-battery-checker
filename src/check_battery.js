@@ -21,7 +21,9 @@ if (!BLID || !PASSWORD) {
 
 // IPアドレスの形式チェック（指定されている場合のみ）
 if (ROOMBA_IP && ROOMBA_IP.trim() !== '') {
-  const ipPattern = /^(25[0-5]|2[0-4]\d|1?\d?\d)\.(25[0-5]|2[0-4]\d|1?\d?\d)\.(25[0-5]|2[0-4]\d|1?\d?\d)\.(25[0-5]|2[0-4]\d|1?\d?\d)$/;
+  // 各オクテットが0-255の範囲内にあることを検証
+  const octet = '(25[0-5]|2[0-4]\\d|1?\\d?\\d)';
+  const ipPattern = new RegExp(`^${octet}\\.${octet}\\.${octet}\\.${octet}$`);
   if (!ipPattern.test(ROOMBA_IP.trim())) {
     console.error('エラー: ROOMBA_IPの形式が不正です。正しいIPアドレス（例: 192.168.1.100）を指定してください');
     process.exit(1);
