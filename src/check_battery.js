@@ -1,0 +1,140 @@
+const dorita980 = require('dorita980');
+const nodemailer = require('nodemailer');
+
+// 環境変数から設定を読み込み
+const BLID = process.env.ROOMBA_BLID;
+const PASSWORD = process.env.ROOMBA_PASSWORD;
+const SMTP_SERVER = process.env.SMTP_SERVER;
+const SMTP_PORT = process.env.SMTP_PORT || '587';
+const SMTP_USER = process.env.SMTP_USER;
+const SMTP_PASSWORD = process.env.SMTP_PASSWORD;
+const SEND_FROM = process.env.SEND_FROM;
+const SEND_TO = process.env.SEND_TO;
+const FORCE_NOTIFICATION = process.env.FORCE_NOTIFICATION === 'true';
+
+// 環境変数のチェック
+if (!BLID || !PASSWORD) {
+  console.error('エラー: ROOMBA_BLIDまたはROOMBA_PASSWORDが設定されていません');
+  process.exit(1);
+}
+
+if (!SMTP_SERVER || !SMTP_USER || !SMTP_PASSWORD || !SEND_TO) {
+  console.error('エラー: SMTP設定が不完全です');
+  console.error('必要な環境変数: SMTP_SERVER, SMTP_USER, SMTP_PASSWORD, SEND_TO');
+  process.exit(1);
+}
+
+// SMTPポート番号の検証とデフォルト値設定
+const parsedSmtpPort = parseInt(SMTP_PORT, 10);
+if (Number.isNaN(parsedSmtpPort)) {
+  console.error('エラー: 無効なSMTPポート番号が設定されています:', SMTP_PORT);
+  process.exit(1);
+}
+const SMTP_PORT_NUMBER = parsedSmtpPort;
+
+// メール送信関数
+async function sendNotification(batteryLevel, deviceName, statusMessage) {
+  const transporter = nodemailer.createTransport({
+    host: SMTP_SERVER,
+    port: SMTP_PORT_NUMBER,
+    // ポート465はSSL/TLS、ポート587はSTARTTLSを使用
+    secure: SMTP_PORT_NUMBER === 465,
+    auth: {
+      user: SMTP_USER,
+      pass: SMTP_PASSWORD
+    }
+  });
+
+  const bodyMessage = `${deviceName}のバッテリー状態をお知らせします。
+
+現在のバッテリー残量: ${batteryLevel}%
+
+${statusMessage}`;
+
+  const mailOptions = {
+    from: SEND_FROM || SMTP_USER,
+    // カンマ区切りで複数のメールアドレスに送信可能
+    to: SEND_TO,
+    subject: `[Roomba通知] ${deviceName}のバッテリー残量が${batteryLevel}%です`,
+    text: `${bodyMessage}
+
+---
+このメールは自動送信されています。`
+  };
+
+  try {
+    await transporter.sendMail(mailOptions);
+    console.log(`通知メールを ${SEND_TO} に送信しました`);
+  } catch (error) {
+    console.error('メール送信エラー:', error);
+    throw error;
+  }
+}
+
+// メイン処理
+async function main() {
+  console.log('Roombaバッテリーチェックを開始します（クラウドAPI経由）');
+  
+  const robot = new dorita980.Cloud(BLID, PASSWORD);
+
+  try {
+    // クラウド経由でRoombaに接続（30秒タイムアウト）
+    await new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        robot.removeAllListeners();
+        reject(new Error('Roombaへの接続がタイムアウトしました（30秒）'));
+      }, 30000);
+
+      const onConnect = () => {
+        clearTimeout(timeout);
+        robot.removeListener('error', onError);
+        resolve();
+      };
+
+      const onError = (err) => {
+        clearTimeout(timeout);
+        robot.removeListener('connect', onConnect);
+        reject(err);
+      };
+
+      robot.once('connect', onConnect);
+      robot.once('error', onError);
+    });
+
+    console.log('Roombaに接続しました');
+
+    // バッテリー状態を取得
+    const state = await robot.getRobotState(['batPct', 'name']);
+    
+    const batteryLevel = state.batPct || 0;
+    const deviceName = state.name || 'Roomba';
+
+    console.log(`デバイス: ${deviceName}, バッテリー残量: ${batteryLevel}%`);
+
+    // バッテリーが100%でない場合、または強制通知フラグがONの場合はメール通知
+    if (batteryLevel < 100) {
+      console.log(`バッテリー残量が${batteryLevel}%です。メール通知を送信します`);
+      const statusMessage = 'バッテリーが100%ではないため、清掃スケジュールの実行に影響する可能性があります。\n充電を確認してください。';
+      await sendNotification(batteryLevel, deviceName, statusMessage);
+    } else if (FORCE_NOTIFICATION) {
+      console.log('強制通知フラグがONです。バッテリー残量100%ですが通知を送信します（疎通確認）');
+      const statusMessage = 'バッテリーは満充電されています。\nこのメールは疎通確認のための強制通知です。';
+      await sendNotification(batteryLevel, deviceName, statusMessage);
+    } else {
+      console.log(`バッテリー残量は${batteryLevel}%です。通知は不要です`);
+    }
+
+    await robot.end();
+    console.log('バッテリーチェック完了');
+  } catch (error) {
+    console.error('エラーが発生しました:', error);
+    try {
+      await robot.end();
+    } catch (endError) {
+      console.error('robot.end() の実行中にエラーが発生しました:', endError);
+    }
+    process.exit(1);
+  }
+}
+
+main();

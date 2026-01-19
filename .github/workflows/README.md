@@ -1,0 +1,32 @@
+# GitHub Actions ワークフロー
+
+このディレクトリには、GitHub Actionsのワークフローファイルが格納されています。
+
+## ワークフロー
+
+### Roombaバッテリーチェック - check-battery.yml
+
+非公式のiRobot Cloud APIを使用して、GitHub-hostedランナーから直接Roombaのバッテリー状態をチェックします。セルフホステッドランナーやVPNの設定が不要で、どこからでもアクセス可能です。
+
+#### トリガー条件
+
+- **スケジュール実行**: [check-battery.yml](check-battery.yml#L4-L8) を参照
+- **手動実行**: GitHubのActionsタブから手動で実行可能（`workflow_dispatch`）
+
+#### 必要な環境変数（GitHub Secrets）
+
+環境変数の詳細は [.env.example](../../.env.example) を参照してください。
+
+#### 動作の流れ
+
+1. リポジトリをチェックアウト
+2. Node.js 20をセットアップ
+3. 依存関係（package.json）をインストール
+4. `src/check_battery.js`を実行してRoombaのバッテリー状態を確認（クラウドAPI経由）
+5. バッテリーが100%でない場合、設定されたメールアドレスに通知を送信
+
+#### スケジュールのカスタマイズ
+
+実行時刻を変更したい場合は、ワークフローファイルの`cron`式を編集してください：
+
+- [check-battery.yml](check-battery.yml#L6)
