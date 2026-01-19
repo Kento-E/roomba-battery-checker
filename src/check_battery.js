@@ -14,16 +14,18 @@ const SEND_TO = process.env.SEND_TO;
 const FORCE_NOTIFICATION = process.env.FORCE_NOTIFICATION === 'true';
 
 // 環境変数のチェック
-if (!BLID || !PASSWORD || !ROOMBA_IP) {
-  console.error('エラー: ROOMBA_BLID、ROOMBA_PASSWORD、またはROOMBA_IPが設定されていません');
+if (!BLID || !PASSWORD) {
+  console.error('エラー: ROOMBA_BLIDまたはROOMBA_PASSWORDが設定されていません');
   process.exit(1);
 }
 
-// IPアドレスの形式チェック
-const ipPattern = /^(\d{1,3}\.){3}\d{1,3}$/;
-if (!ipPattern.test(ROOMBA_IP)) {
-  console.error('エラー: ROOMBA_IPの形式が不正です。正しいIPアドレス（例: 192.168.1.100）を指定してください');
-  process.exit(1);
+// IPアドレスの形式チェック（指定されている場合のみ）
+if (ROOMBA_IP) {
+  const ipPattern = /^(\d{1,3}\.){3}\d{1,3}$/;
+  if (!ipPattern.test(ROOMBA_IP)) {
+    console.error('エラー: ROOMBA_IPの形式が不正です。正しいIPアドレス（例: 192.168.1.100）を指定してください');
+    process.exit(1);
+  }
 }
 
 if (!SMTP_SERVER || !SMTP_USER || !SMTP_PASSWORD || !SEND_TO) {
@@ -79,11 +81,44 @@ ${statusMessage}`;
   }
 }
 
+// Roomba IPアドレスを取得する関数（自動検出または手動指定）
+async function getRoombaIP() {
+  if (ROOMBA_IP) {
+    console.log(`指定されたIPアドレスを使用: ${ROOMBA_IP}`);
+    return ROOMBA_IP;
+  }
+
+  console.log('Roombaを自動検出中...');
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new Error('Roombaの自動検出がタイムアウトしました。ROOMBA_IP環境変数を設定してください。'));
+    }, 10000); // 10秒でタイムアウト
+
+    dorita980.getRobotIP((error, ip) => {
+      clearTimeout(timeout);
+      if (error) {
+        reject(new Error(`Roombaの自動検出に失敗しました: ${error.message}`));
+      } else {
+        console.log(`Roombaを検出しました: ${ip}`);
+        resolve(ip);
+      }
+    });
+  });
+}
+
 // メイン処理
 async function main() {
   console.log('Roombaバッテリーチェックを開始します（Local API経由）');
   
-  const robot = new dorita980.Local(BLID, PASSWORD, ROOMBA_IP);
+  let roombaIP;
+  try {
+    roombaIP = await getRoombaIP();
+  } catch (error) {
+    console.error('エラー:', error.message);
+    process.exit(1);
+  }
+  
+  const robot = new dorita980.Local(BLID, PASSWORD, roombaIP);
 
   robot.on('connect', async () => {
     try {

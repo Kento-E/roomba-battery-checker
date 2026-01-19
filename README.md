@@ -10,6 +10,7 @@ Roombaの充電状態を定期確認するツール🔋
 
 - セルフホステッドランナーによるローカルネットワークからの直接アクセス
 - dorita980 Local APIを使用（安定した接続）
+- **Roombaの自動検出機能**（動的IPアドレスに対応）
 - クラウドサービス不要で確実に動作
 - プライバシーとセキュリティの向上
 
@@ -40,9 +41,11 @@ Roombaと同じローカルネットワーク上でGitHub Actionsセルフホス
 
 詳細は [GitHub公式ドキュメント](https://docs.github.com/ja/actions/hosting-your-own-runners/managing-self-hosted-runners/adding-self-hosted-runners) を参照してください。
 
-### 2. Roombaの認証情報とIPアドレスを取得
+### 2. Roombaの認証情報を取得
 
-Local API経由でアクセスするには、RoombaのBLID、パスワード、およびIPアドレスが必要です。
+Local API経由でアクセスするには、RoombaのBLIDとパスワードが必要です。
+
+**注意**: IPアドレスは自動検出されるため、通常は設定不要です。IPアドレスが固定されている場合や自動検出が失敗する場合のみ、手動で設定できます。
 
 #### dorita980を使用してBLIDとパスワードを取得
 
@@ -54,37 +57,44 @@ npm install -g dorita980
 
 # Roombaをホームベースに置き、電源を入れる
 # HOMEボタンを長押し（約2秒）してビープ音が鳴るまで待つ
-# その後、以下のコマンドを実行（<RoombaのIPアドレス>は後述の方法で確認）
-get-roomba-password <RoombaのIPアドレス>
+# その後、以下のコマンドを実行
+get-roomba-password
+# プロンプトに従い、再度HOMEボタンを長押し
 ```
 
-#### RoombaのIPアドレスを確認
+このコマンドで、BLIDとパスワードの両方が表示されます。
 
-以下のいずれかの方法でRoombaのIPアドレスを確認：
+#### （オプション）IPアドレスを手動で確認・設定する場合
+
+通常は不要ですが、以下の場合にIPアドレスを手動設定できます：
+- 自動検出が失敗する場合
+- IPアドレスを固定している場合
+- 起動時間を短縮したい場合
+
+IPアドレスの確認方法：
 
 1. **ルーターの管理画面**で接続デバイスを確認
 2. **iRobot Homeアプリ**の設定画面で確認
-3. **dorita980の自動検出**を使用：
-
-```bash
-npm install -g dorita980
-get-roomba-password
-# プロンプトに従い、HOMEボタンを長押し
-```
+3. **上記のget-roomba-passwordコマンド**の実行結果に含まれるIPアドレスを確認
 
 ### 3. GitHub Secretsの設定
 
 GitHubリポジトリの **Settings** → **Secrets and variables** → **Actions** で、以下のSecretsを設定してください：
 
-- `ROOMBA_BLID`: Roombaのユーザー名（BLID）（[取得方法](#2-roombaの認証情報とipアドレスを取得)）
-- `ROOMBA_PASSWORD`: Roombaのパスワード（[取得方法](#2-roombaの認証情報とipアドレスを取得)）
-- `ROOMBA_IP`: RoombaのIPアドレス（例: 192.168.1.100）（[確認方法](#roombaのipアドレスを確認)）
+**必須の設定：**
+- `ROOMBA_BLID`: Roombaのユーザー名（BLID）（[取得方法](#2-roombaの認証情報を取得)）
+- `ROOMBA_PASSWORD`: Roombaのパスワード（[取得方法](#2-roombaの認証情報を取得)）
 - `SMTP_SERVER`: SMTPサーバーのホスト名
 - `SMTP_PORT`: SMTPポート番号（通常は587）
 - `SMTP_USER`: SMTP認証用のユーザー名
 - `SMTP_PASSWORD`: SMTP認証用のパスワード
-- `SEND_FROM`: 送信元メールアドレス（省略可、省略時はSMTP_USERを使用）
 - `SEND_TO`: 通知先メールアドレス
+
+**オプションの設定：**
+- `ROOMBA_IP`: RoombaのIPアドレス（例: 192.168.1.100）（[確認方法](#オプションipアドレスを手動で確認設定する場合)）
+  - **省略時は自動検出されます**（推奨）
+  - IPアドレスが固定されている場合や自動検出が失敗する場合のみ設定
+- `SEND_FROM`: 送信元メールアドレス（省略時はSMTP_USERを使用）
 
 環境変数の詳細は [.env.example](.env.example) を参照してください。
 
