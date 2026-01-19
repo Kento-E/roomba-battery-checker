@@ -19,6 +19,13 @@ if (!BLID || !PASSWORD || !ROOMBA_IP) {
   process.exit(1);
 }
 
+// IPアドレスの形式チェック
+const ipPattern = /^(\d{1,3}\.){3}\d{1,3}$/;
+if (!ipPattern.test(ROOMBA_IP)) {
+  console.error('エラー: ROOMBA_IPの形式が不正です。正しいIPアドレス（例: 192.168.1.100）を指定してください');
+  process.exit(1);
+}
+
 if (!SMTP_SERVER || !SMTP_USER || !SMTP_PASSWORD || !SEND_TO) {
   console.error('エラー: SMTP設定が不完全です');
   console.error('必要な環境変数: SMTP_SERVER, SMTP_USER, SMTP_PASSWORD, SEND_TO');
@@ -118,8 +125,13 @@ async function main() {
     }
   });
 
-  robot.on('error', (error) => {
+  robot.on('error', async (error) => {
     console.error('Roomba接続エラー:', error);
+    try {
+      await robot.end();
+    } catch (e) {
+      // 接続終了時のエラーは無視
+    }
     process.exit(1);
   });
 }
