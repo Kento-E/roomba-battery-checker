@@ -8,10 +8,12 @@
 
 ### 結論
 
-**PR #11 の記載は不正確でした。**
+**PR #11 の記載は部分的に不正確でしたが、本質的には正しい判断でした。**
 
-- iRobot Cloud API（`irobot.axeda.com`）が2024年に恒久廃止されたという公式アナウンスは存在しません
-- GitHub Actions で発生した `ENOTFOUND` エラーは、DNSルックアップの失敗を示すものであり、必ずしも恒久的なサービス廃止を意味するものではありません
+- iRobot Cloud API（`irobot.axeda.com`）が「2024年に恒久廃止された」という公式アナウンスは存在しません
+  - 実際には2021年頃にAxedaサービス終了に伴い廃止されていました
+- GitHub Actions で発生した `ENOTFOUND` エラーは、このエンドポイントの恒久的な廃止を示しています
+- **重要**: dorita980のCloud APIは現在完全に利用不可能です
 
 ### 詳細な調査内容
 
@@ -44,6 +46,26 @@ Error: getaddrinfo ENOTFOUND irobot.axeda.com
 - 財務的困難により、将来的にクラウドサービスが影響を受ける可能性はありますが、これは2024年の廃止とは異なります
 - 公式な廃止スケジュールは発表されていません
 
+#### 4. dorita980のCloud API実装状況（追加調査）
+
+dorita980ライブラリには2つのCloud APIバージョンがあります：
+
+**Cloud API v1**:
+- エンドポイント: `https://irobot.axeda.com/services/v1/rest/Scripto/execute/AspenApiRequest`
+- 実装コード: `node_modules/dorita980/lib/v1/cloud.js`
+- 状態: Axedaサービス終了（2021年頃）により恒久的に利用不可 ❌
+
+**Cloud API v2**:
+- 実装コード: `node_modules/dorita980/lib/v2/cloud.js`
+- 状態: `throw new Error('Not implemented.');` のみで未実装 ❌
+
+**iRobotの新Cloud API**:
+- OAuth2ベースの新API（`irobotapi.com`など）に移行済み
+- Partner API登録が必要（一般ユーザーには非公開）
+- dorita980は未対応 ❌
+
+**結論**: dorita980で動作するのはLocal APIのみです。
+
 ### 正しい理解
 
 #### PR #11 で実施された変更の本当の理由
@@ -54,9 +76,16 @@ Error: getaddrinfo ENOTFOUND irobot.axeda.com
 
 #### より正確な表現
 
-誤：「iRobot Cloud APIエンドポイント（`irobot.axeda.com`）が2024年に恒久廃止された」
+**不正確な表現**：
+「iRobot Cloud APIエンドポイント（`irobot.axeda.com`）が2024年に恒久廃止された」
 
-正：「iRobot Cloud APIエンドポイント（`irobot.axeda.com`）へのアクセスで `ENOTFOUND` エラーが発生し、接続が不可能な状態となったため、Local APIへの移行を実施しました。なお、iRobot社の財務状況を考慮すると、将来的にクラウドサービスの継続性に不確実性があります。」
+**より正確な表現**：
+「iRobot Cloud APIエンドポイント（`irobot.axeda.com`）は2021年頃にAxedaサービス終了に伴い恒久廃止されており、2026年1月時点でDNS解決が失敗します（`ENOTFOUND`エラー）。dorita980のCloud APIは完全に利用不可能な状態のため、Local APIへの移行を実施しました。」
+
+**追記**：
+- dorita980のLocal APIは現在も動作します
+- Cloud APIを利用するには、iRobotの新しいOAuth2ベースAPIへの対応が必要ですが、dorita980は未対応です
+- 詳細は [cloud-api-analysis.md](cloud-api-analysis.md) を参照してください
 
 ## 推奨事項
 
