@@ -8,6 +8,16 @@ Roombaの充電状態を定期確認するツール🔋
 
 Roombaの自動検出機能により、動的IPアドレス（DHCP）環境でも安定して動作します。
 
+### なぜLocal APIを使用するのか
+
+このツールは、dorita980ライブラリのLocal APIを使用しています：
+
+- **高速・安定**: ローカルネットワーク内で直接通信するため、クラウド経由よりも高速で安定
+- **プライバシー**: Roombaのデータが外部サーバーを経由せず、ローカルネットワーク内で完結
+- **信頼性**: iRobot社のクラウドサービスの可用性に依存しない独立した動作
+
+なお、dorita980ライブラリはCloud APIもサポートしていますが、2026年1月時点でiRobot Cloud APIエンドポイント（`irobot.axeda.com`）への接続時にDNSエラーが発生する状況が確認されています。詳細は [docs/irobot-cloud-api-investigation.md](docs/irobot-cloud-api-investigation.md) を参照してください。
+
 ### 必要な環境
 
 - Roombaとワークフロー実行環境が同じローカルネットワーク上に存在すること
