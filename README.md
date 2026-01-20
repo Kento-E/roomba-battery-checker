@@ -6,7 +6,7 @@ Androidで動作するRoombaバッテリー定期確認ツール🔋📱
 
 このツールは、Android端末上で定期的にRoombaのバッテリー状態を確認し、充電が100%でない場合にメール通知を送信するアプリケーションです。
 
-dorita980ライブラリのLocal APIを使用してRoombaと直接通信するため、Roombaと同じローカルネットワーク上にあるAndroid端末で動作させます。Android WorkManagerを使用した定期実行により、バックグラウンドでの安定した動作を実現します。
+dorita980ライブラリのLocal APIを使用してRoombaと直接通信するため、Roombaと同じローカルネットワーク上にあるAndroid端末で動作させます。Termuxのcronを使用した定期実行により、バックグラウンドでの安定した動作を実現します。
 
 ### 特徴
 
@@ -26,7 +26,7 @@ dorita980ライブラリのLocal APIを使用してRoombaと直接通信する�
 このツールは以下の構成で動作します：
 
 1. **Android端末**: Termuxアプリ内でNode.jsを実行
-2. **定期実行**: Android WorkManager または cron（Termux）で定期タスクを設定
+2. **定期実行**: cron（Termux）で定期タスクを設定
 3. **バッテリーチェック**: dorita980のLocal API経由でRoombaに接続
 4. **通知**: メール送信（SMTP経由）
 
@@ -122,8 +122,11 @@ crontab -e
 crontabに以下を追加（例：毎日午前8時に実行）：
 
 ```cron
-0 8 * * * cd /data/data/com.termux/files/home/roomba-battery-checker && npm run check-battery
+0 8 * * * cd $HOME/roomba-battery-checker && npm run check-battery
 ```
+
+**パスの確認**:
+プロジェクトをクローンしたディレクトリに合わせてパスを変更してください。現在のパスは`pwd`コマンドで確認できます。
 
 **注意事項：**
 - Termuxのcronは、Termuxアプリが強制終了されていない状態でのみ動作します
