@@ -10,7 +10,7 @@ dorita980ライブラリのLocal APIを使用してRoombaと直接通信する�
 
 ### 特徴
 
-- **Android端末で定期実行**: WorkManagerによる確実なバックグラウンド実行（最小15分間隔）
+- **Android端末で定期実行**: cronie（Termuxのcron実装）による確実なバックグラウンド実行（最小1分間隔）
 - **Local API使用**: Roombaと直接通信（高速・安定・プライバシー保護）
 - **自動検出対応**: 動的IPアドレス（DHCP）環境でも安定動作
 - **メール通知**: バッテリー不足時に自動でメール送信
@@ -188,7 +188,6 @@ chmod +x run_local.sh
 
 2. **Termuxがバックグラウンドで動作許可されているか確認**：
    - Android設定 → アプリ → Termux → バッテリー → バックグラウンド制限なし
-   - メーカー独自の省電力機能も確認（Huawei、Xiaomi等）
 
 3. **Termux:Bootを使用**（推奨）：
    端末再起動時にcrondが自動起動されるように設定
@@ -220,7 +219,7 @@ chmod +x run_local.sh
 - [Termux公式ドキュメント](https://termux.dev/)
 - [dorita980 (Node.js SDK)](https://github.com/koalazak/dorita980)
 - [Termux:Boot](https://wiki.termux.com/wiki/Termux:Boot)
-- [Android WorkManager](https://developer.android.com/topic/libraries/architecture/workmanager)
+- [Termux Services](https://wiki.termux.com/wiki/Termux-services)
 
 ## なぜLocal APIを使用するのか
 
@@ -231,4 +230,4 @@ chmod +x run_local.sh
 - **信頼性**: iRobot社のクラウドサービスに依存しない
 
 **Cloud APIについて**:
-dorita980はCloud APIもサポートしていますが、2021年頃にiRobot Cloud APIエンドポイント（`irobot.axeda.com`）がAxedaサービス終了に伴い廃止され、現在は利用できません。新しいOAuth2ベースのCloud APIも存在しますが、dorita980は未対応です。詳細はPRの説明を参照してください。
+dorita980はCloud APIもサポートしていますが、2021年頃にiRobot Cloud APIエンドポイント（`irobot.axeda.com`）がAxedaサービス終了に伴い廃止され、現在は利用できません。新しいOAuth2ベースのCloud APIも存在しますが、dorita980は未対応です。詳細は[dorita980のリポジトリ](https://github.com/koalazak/dorita980)および関連ドキュメントを参照してください。
