@@ -1,3 +1,6 @@
+// .envファイルから環境変数を読み込み
+require('dotenv').config();
+
 const dorita980 = require('dorita980');
 const nodemailer = require('nodemailer');
 
