@@ -140,17 +140,30 @@ async function main() {
       console.log('Roomba状態を取得中...');
       
       // Local APIでバッテリー状態を取得（タイムアウト付き）
+      // getBasicMission()を使用してバッテリー情報を確実に取得
       let timeoutId;
-      const statePromise = robot.getRobotState(['batPct', 'name']);
+      const missionPromise = robot.getBasicMission();
       const timeoutPromise = new Promise((_, reject) => {
         timeoutId = setTimeout(() => reject(new Error('バッテリー状態の取得がタイムアウトしました（30秒）')), 30000);
       });
       
-      const state = await Promise.race([statePromise, timeoutPromise]);
+      const mission = await Promise.race([missionPromise, timeoutPromise]);
       clearTimeout(timeoutId); // タイムアウトをクリーンアップ
       
-      const batteryLevel = state?.batPct;
-      const deviceName = state?.name ?? 'Roomba';
+      const batteryLevel = mission?.batPct;
+      
+      // デバイス名を取得（別途getRobotStateで取得を試みる）
+      let deviceName = 'Roomba';
+      try {
+        const nameState = await Promise.race([
+          robot.getRobotState(['name']),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000))
+        ]);
+        deviceName = nameState?.name ?? 'Roomba';
+      } catch (e) {
+        // デバイス名の取得に失敗してもバッテリーチェックは続行
+        console.log('デバイス名の取得をスキップしました');
+      }
       
       // バッテリー情報が取得できない場合はエラー
       if (batteryLevel === undefined || batteryLevel === null) {
