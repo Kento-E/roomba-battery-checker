@@ -1,67 +1,73 @@
 # roomba-battery-checker
 
-Roombaの充電状態を定期確認するツール🔋
+Androidで動作するRoombaバッテリー定期確認ツール🔋📱
 
 ## 概要
 
-このツールは、dorita980ライブラリのLocal APIを使用してRoombaのバッテリー状態をローカルネットワーク経由で確認し、充電が100%でない場合にメール通知を送信します。GitHub Actionsでスケジュール実行されるため、定期清掃の前にバッテリー不足を事前に検知できます。
+このツールは、Android端末上で定期的にRoombaのバッテリー状態を確認し、充電が100%でない場合にメール通知を送信するアプリケーションです。
 
-Roombaの自動検出機能により、動的IPアドレス（DHCP）環境でも安定して動作します。
+dorita980ライブラリのLocal APIを使用してRoombaと直接通信するため、Roombaと同じローカルネットワーク上にあるAndroid端末で動作させます。Termuxのcronを使用した定期実行により、バックグラウンドでの安定した動作を実現します。
+
+### 特徴
+
+- **Android端末で定期実行**: cronie（Termuxのcron実装）による確実なバックグラウンド実行（最小1分間隔）
+- **Local API使用**: Roombaと直接通信（高速・安定・プライバシー保護）
+- **自動検出対応**: 動的IPアドレス（DHCP）環境でも安定動作
+- **メール通知**: バッテリー不足時に自動でメール送信
 
 ### 必要な環境
 
-- Roombaとワークフロー実行環境が同じローカルネットワーク上に存在すること
-- GitHub Actionsのセルフホステッドランナー
+- Android端末（Android 5.0以上推奨）
+- Roombaと同じWi-Fiネットワークに接続していること
+- Node.jsランタイム（Termux等で実行）
 
-## 機能
+## アーキテクチャ
 
-- Roombaのバッテリー残量チェック（Local API経由）
-- バッテリーが100%でない場合のメール通知（SMTP経由）
-- GitHub Actionsによるスケジュール実行
+このツールは以下の構成で動作します：
+
+1. **Android端末**: Termuxアプリ内でNode.jsを実行
+2. **定期実行**: cron（Termux）で定期タスクを設定
+3. **バッテリーチェック**: dorita980のLocal API経由でRoombaに接続
+4. **通知**: メール送信（SMTP経由）
 
 ## セットアップ
 
-### 1. ランナーのセットアップ
+### 1. Termuxのインストールと設定
 
-Roombaと同じローカルネットワーク上でGitHub Actionsのランナーを実行する必要があります。
+Android端末にTermuxをインストールします：
 
-#### 手順
+1. [Google Play Store](https://play.google.com/store/apps/details?id=com.termux) または [F-Droid](https://f-droid.org/packages/com.termux/) からTermuxをインストール
+2. Termuxを起動し、以下のコマンドでパッケージを更新：
 
-1. GitHubリポジトリの **Settings** → **Actions** → **Runners** に移動
-2. **New self-hosted runner** をクリック
-3. お使いのOSを選択
-4. 表示される手順に従ってランナーをダウンロード・インストール
-   ```bash
-   # Linux/macOSの例
-   mkdir actions-runner && cd actions-runner
-   curl -o actions-runner-linux-x64-2.311.0.tar.gz -L https://github.com/actions/runner/releases/download/v2.311.0/actions-runner-linux-x64-2.311.0.tar.gz
-   tar xzf ./actions-runner-linux-x64-2.311.0.tar.gz
-   ./config.sh --url https://github.com/YOUR_USER/roomba-battery-checker --token YOUR_TOKEN
-   ```
-5. ランナーを起動
-   ```bash
-   # フォアグラウンドで実行
-   ./run.sh
-   
-   # または、サービスとしてインストール（推奨）
-   sudo ./svc.sh install
-   sudo ./svc.sh start
-   ```
+```bash
+pkg update && pkg upgrade
+```
 
-詳細は [GitHub公式ドキュメント](https://docs.github.com/ja/actions/hosting-your-own-runners/managing-self-hosted-runners/adding-self-hosted-runners) を参照してください。
+3. Node.jsをインストール：
 
-### 2. Roombaの認証情報を取得
+```bash
+pkg install nodejs-lts git
+```
+
+### 2. プロジェクトのセットアップ
+
+```bash
+# リポジトリをクローン
+git clone https://github.com/YOUR_USERNAME/roomba-battery-checker.git
+cd roomba-battery-checker
+
+# 依存関係をインストール
+npm install
+```
+
+### 3. Roombaの認証情報を取得
 
 Local API経由でアクセスするには、RoombaのBLIDとパスワードが必要です。
 
-**注意**: IPアドレスは自動検出されるため、通常は設定不要です。IPアドレスが固定されている場合や自動検出が失敗する場合のみ、手動で設定できます。
-
 #### dorita980を使用してBLIDとパスワードを取得
 
-Roombaと同じネットワーク上のマシン（ランナーを実行しているマシンなど）で以下を実行：
-
 ```bash
-# dorita980をインストール
+# dorita980をグローバルにインストール
 npm install -g dorita980
 
 # Roombaをホームベースに置き、電源を入れる
@@ -73,26 +79,21 @@ get-roomba-password
 
 このコマンドで、BLIDとパスワードの両方が表示されます。
 
-#### （オプション）IPアドレスを手動で確認・設定する場合
+### 4. 環境変数の設定
 
-通常は不要ですが、以下の場合にIPアドレスを手動設定できます：
-- 自動検出が失敗する場合
-- IPアドレスを固定している場合
-- 起動時間を短縮したい場合
+```bash
+# .env.exampleをコピーして.envを作成
+cp .env.example .env
 
-IPアドレスの確認方法：
+# .envファイルを編集して認証情報を設定
+nano .env  # またはvim .env
+```
 
-1. **ルーターの管理画面**で接続デバイスを確認
-2. **iRobot Homeアプリ**の設定画面で確認
-3. **上記のget-roomba-passwordコマンド**の実行結果に含まれるIPアドレスを確認
-
-### 3. GitHub Secretsの設定
-
-GitHubリポジトリの **Settings** → **Secrets and variables** → **Actions** で、以下のSecretsを設定してください：
+`.env`ファイルに以下の情報を設定：
 
 **必須の設定：**
-- `ROOMBA_BLID`: Roombaのユーザー名（BLID）（[取得方法](#2-roombaの認証情報を取得)）
-- `ROOMBA_PASSWORD`: Roombaのパスワード（[取得方法](#2-roombaの認証情報を取得)）
+- `ROOMBA_BLID`: Roombaのユーザー名（BLID）
+- `ROOMBA_PASSWORD`: Roombaのパスワード
 - `SMTP_SERVER`: SMTPサーバーのホスト名
 - `SMTP_PORT`: SMTPポート番号（通常は587）
 - `SMTP_USER`: SMTP認証用のユーザー名
@@ -100,60 +101,107 @@ GitHubリポジトリの **Settings** → **Secrets and variables** → **Action
 - `SEND_TO`: 通知先メールアドレス
 
 **オプションの設定：**
-- `ROOMBA_IP`: RoombaのIPアドレス（例: 192.168.1.100）（[確認方法](#オプションipアドレスを手動で確認設定する場合)）
-  - **省略時は自動検出されます**（推奨）
-  - IPアドレスが固定されている場合や自動検出が失敗する場合のみ設定
+- `ROOMBA_IP`: RoombaのIPアドレス（省略時は自動検出）
 - `SEND_FROM`: 送信元メールアドレス（省略時はSMTP_USERを使用）
 
-環境変数の詳細は [.env.example](.env.example) を参照してください。
+### 5. 定期実行の設定
+
+Termuxのcronを使用して定期実行を設定します：
+
+```bash
+# cronie（cron実装）をインストール
+pkg install cronie termux-services
+
+# サービスを再起動
+sv-enable crond
+
+# crontabを編集
+crontab -e
+```
+
+crontabに以下を追加（例：毎日午前8時に実行）：
+
+```cron
+0 8 * * * cd $HOME/roomba-battery-checker && npm run check-battery
+```
+
+**パスの確認**:
+プロジェクトをクローンしたディレクトリに合わせてパスを変更してください。現在のパスは`pwd`コマンドで確認できます。
+
+**注意事項：**
+- Termuxのcronは、Termuxアプリが強制終了されていない状態でのみ動作します
+- Android端末の省電力設定でTermuxをバックグラウンド動作許可に設定してください
+- より確実な実行には、Termux:Bootアプリと組み合わせる方法もあります
+
+### 6. Termux:Boot（オプション - 推奨）
+
+端末再起動時にも自動実行するには、Termux:Bootを使用します：
+
+1. [Termux:Boot](https://f-droid.org/packages/com.termux.boot/) をインストール
+2. 起動スクリプトを作成：
+
+```bash
+mkdir -p ~/.termux/boot
+nano ~/.termux/boot/start-cron
+```
+
+以下の内容を記述：
+
+```bash
+#!/data/data/com.termux/files/usr/bin/sh
+termux-wake-lock
+sv-enable crond
+```
+
+実行権限を付与：
+
+```bash
+chmod +x ~/.termux/boot/start-cron
+```
 
 ## 使い方
 
-### スケジュール実行
-
-デフォルトのスケジュールは [.github/workflows/check-battery.yml](.github/workflows/check-battery.yml#L4-L8) を参照してください。
-
-実行スケジュールを変更したい場合は、`.github/workflows/check-battery.yml`のcron式を編集してください。
-
-詳細は [ワークフローREADME](.github/workflows/README.md) を参照してください。
-
 ### 手動実行
 
-GitHub ActionsのActionsタブから「Roombaバッテリーチェック」ワークフローを選択し、「Run workflow」ボタンで手動実行できます。
+```bash
+cd /path/to/roomba-battery-checker
+npm run check-battery
+```
 
-## ローカルでの実行
-
-### スクリプトを使用
+または：
 
 ```bash
-# 1. .env.exampleをコピーして.envを作成
-cp .env.example .env
-
-# 2. .envファイルを編集して認証情報を設定
-nano .env  # または任意のエディタで編集
-
-# 3. スクリプトを実行
 chmod +x run_local.sh
 ./run_local.sh
 ```
 
 ## トラブルシューティング
 
-### 接続エラー
+### Android/Termux関連
 
-- Roombaがホームベースに置かれ、電源が入っているか確認してください
-- ランナーとRoombaが同じローカルネットワーク上にあるか確認してください
-- RoombaのIPアドレスが正しいか確認してください
-- BLIDとパスワードが正しいか確認してください
-- ファイアウォールでポート8883がブロックされていないか確認してください
+#### cronが動作しない
 
-### ランナーが起動しない
+1. **crondサービスが起動しているか確認**：
+   ```bash
+   sv status crond
+   ```
 
-- ランナーのログを確認してください
-- ランナーのサービスが実行中か確認してください
-- GitHubリポジトリのSettings → Actions → Runnersで、ランナーがオンラインになっているか確認してください
+2. **Termuxがバックグラウンドで動作許可されているか確認**：
+   - Android設定 → アプリ → Termux → バッテリー → バックグラウンド制限なし
 
-### 認証情報の取得に失敗する場合
+3. **Termux:Bootを使用**（推奨）：
+   端末再起動時にcrondが自動起動されるように設定
+
+#### 接続エラー
+
+- Roombaがホームベースに置かれ、電源が入っているか確認
+- Android端末とRoombaが同じWi-Fiネットワーク上にあるか確認
+- BLIDとパスワードが正しいか確認
+- ファイアウォールでポート8883がブロックされていないか確認
+
+### Roomba関連
+
+#### 認証情報の取得に失敗する場合
 
 1. Roombaがホームベースに置かれ、電源が入っているか確認
 2. HOMEボタンを正しく長押し（約2秒、ビープ音が鳴るまで）
@@ -168,6 +216,6 @@ chmod +x run_local.sh
 
 ## 参考資料
 
+- [Termux公式ドキュメント](https://termux.dev/)
 - [dorita980 (Node.js SDK)](https://github.com/koalazak/dorita980)
-- [rest980 (REST API)](https://github.com/koalazak/rest980)
-- [Home Assistant Roomba Integration](https://www.home-assistant.io/integrations/roomba/)
+- [Termux:Boot](https://wiki.termux.com/wiki/Termux:Boot)
