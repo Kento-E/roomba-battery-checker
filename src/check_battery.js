@@ -155,10 +155,14 @@ async function main() {
       // デバイス名を取得（別途getRobotStateで取得を試みる）
       let deviceName = 'Roomba';
       try {
+        let nameTimeoutId;
         const nameState = await Promise.race([
           robot.getRobotState(['name']),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000))
+          new Promise((_, reject) => {
+            nameTimeoutId = setTimeout(() => reject(new Error('timeout')), 5000);
+          })
         ]);
+        clearTimeout(nameTimeoutId); // タイムアウトをクリーンアップ
         deviceName = nameState?.name ?? 'Roomba';
       } catch (e) {
         // デバイス名の取得に失敗してもバッテリーチェックは続行
