@@ -163,19 +163,27 @@ chmod +x ~/.termux/boot/start-cron
 
 ### 手動実行
 
-**重要**: 手動実行する前に、`.env`ファイルが正しく設定されていることを確認してください（セットアップ手順を参照）。
+**推奨**: 実行スクリプトを使用する方法（依存関係のインストールと環境変数チェックを自動で実行）
+
+```bash
+cd /path/to/roomba-battery-checker
+chmod +x run_local.sh
+./run_local.sh
+```
+
+このスクリプトは以下を自動で実行します：
+- `.env`ファイルの存在チェック
+- 必要に応じて依存関係のインストール（`npm install`）
+- バッテリーチェックの実行
+
+**直接実行する場合**:
 
 ```bash
 cd /path/to/roomba-battery-checker
 npm run check-battery
 ```
 
-または、環境変数の読み込みを含む実行スクリプトを使用：
-
-```bash
-chmod +x run_local.sh
-./run_local.sh
-```
+注：この方法では、事前に`.env`ファイルの設定と`npm install`の実行が必要です。
 
 ## トラブルシューティング
 

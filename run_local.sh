@@ -5,6 +5,9 @@
 # 使い方:
 #   1. .envファイルを作成して必要な環境変数を設定
 #   2. このスクリプトを実行: ./run_local.sh
+#
+# 注: dotenvパッケージにより、npm run check-batteryは自動的に.envファイルを読み込みます。
+#     このスクリプトは.envファイルの存在確認と依存関係のインストールを行います。
 
 set -e
 
@@ -25,16 +28,13 @@ if [ ! -f .env ]; then
     exit 1
 fi
 
-echo "環境変数を.envから読み込み中..."
-set -a; . .env; set +a
-
 # 依存関係をインストール（node_modulesがない場合のみ）
 if [ ! -d "node_modules" ]; then
     echo "依存関係をインストール中..."
     npm install
 fi
 
-# スクリプトを実行
+# スクリプトを実行（dotenvが自動的に.envファイルを読み込みます）
 echo "Roombaバッテリーチェックを実行中..."
 if ! npm run check-battery; then
     echo ""
