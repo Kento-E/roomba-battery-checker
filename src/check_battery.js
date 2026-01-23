@@ -148,6 +148,7 @@ async function main() {
         let timeoutId;
         let resolved = false; // Promiseが解決済みかを追跡
         let stateUpdateCount = 0; // 受信した状態更新の回数
+        let fullStateReceived = false; // 完全な状態を一度だけログ出力
         
         const stateHandler = (state) => {
           if (resolved) return; // 既に解決済みの場合は何もしない
@@ -155,6 +156,14 @@ async function main() {
           stateUpdateCount++;
           console.log(`\n===== 状態更新 #${stateUpdateCount} =====`);
           console.log('受信フィールド:', Object.keys(state).join(', '));
+          
+          // 完全な状態を一度だけJSON形式でログ出力（デバッグ用）
+          if (!fullStateReceived && Object.keys(state).length > 5) {
+            fullStateReceived = true;
+            console.log('\n【完全な状態オブジェクト（JSON形式）】:');
+            console.log(JSON.stringify(state, null, 2));
+            console.log('【完全な状態オブジェクト（終了）】\n');
+          }
           
           // デバッグ用：受信した状態の一部を詳細表示
           if (state.batPct != null) {
