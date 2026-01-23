@@ -158,6 +158,8 @@ async function main() {
           console.log('受信フィールド:', Object.keys(state).join(', '));
           
           // 完全な状態を一度だけJSON形式でログ出力（デバッグ用）
+          // 注: capフィールドのみの初期状態（通常1-3フィールド）をスキップし、
+          // より多くの情報を含む状態更新（通常5+フィールド）を表示
           if (!fullStateReceived && Object.keys(state).length > 5) {
             fullStateReceived = true;
             console.log('\n【完全な状態オブジェクト（JSON形式）】:');
