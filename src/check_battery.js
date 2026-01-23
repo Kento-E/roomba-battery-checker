@@ -145,8 +145,11 @@ async function main() {
         let batteryLevel = null;
         let deviceName = 'Roomba';
         let timeoutId;
+        let resolved = false; // Promiseが解決済みかを追跡
         
         const stateHandler = (state) => {
+          if (resolved) return; // 既に解決済みの場合は何もしない
+          
           console.log('状態更新を受信:', Object.keys(state).join(', '));
           
           // バッテリー情報が含まれている場合
@@ -162,6 +165,7 @@ async function main() {
           
           // バッテリー情報が取得できたら解決
           if (batteryLevel != null) {
+            resolved = true; // 解決済みフラグを設定
             clearTimeout(timeoutId);
             robot.removeListener('state', stateHandler);
             resolve({ batteryLevel, deviceName });
@@ -170,6 +174,8 @@ async function main() {
         
         // タイムアウト設定（30秒）
         timeoutId = setTimeout(() => {
+          if (resolved) return; // 既に解決済みの場合は何もしない
+          resolved = true; // 解決済みフラグを設定
           robot.removeListener('state', stateHandler);
           reject(new Error('バッテリー状態の取得がタイムアウトしました（30秒）'));
         }, 30000);
