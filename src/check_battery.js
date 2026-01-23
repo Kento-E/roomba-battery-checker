@@ -139,8 +139,13 @@ async function main() {
     try {
       console.log('Roomba状態を取得中...');
       
-      // Local APIでバッテリー状態を取得
-      const state = await robot.getRobotState(['batPct', 'name']);
+      // Local APIでバッテリー状態を取得（タイムアウト付き）
+      const statePromise = robot.getRobotState(['batPct', 'name']);
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('バッテリー状態の取得がタイムアウトしました（30秒）')), 30000)
+      );
+      
+      const state = await Promise.race([statePromise, timeoutPromise]);
       
       const batteryLevel = state?.batPct;
       const deviceName = state?.name ?? 'Roomba';
