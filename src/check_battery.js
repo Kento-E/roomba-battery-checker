@@ -138,6 +138,7 @@ async function main() {
   robot.on('connect', async () => {
     try {
       console.log('Roomba状態を取得中...');
+      console.log('デバッグ: MQTT接続が確立されました。状態更新を待機しています...');
       
       // MQTTメッセージを受信してバッテリー状態を取得
       // on('state')イベントでリアルタイムに状態を監視
@@ -146,16 +147,34 @@ async function main() {
         let deviceName = 'Roomba';
         let timeoutId;
         let resolved = false; // Promiseが解決済みかを追跡
+        let stateUpdateCount = 0; // 受信した状態更新の回数
         
         const stateHandler = (state) => {
           if (resolved) return; // 既に解決済みの場合は何もしない
           
-          console.log('状態更新を受信:', Object.keys(state).join(', '));
+          stateUpdateCount++;
+          console.log(`\n===== 状態更新 #${stateUpdateCount} =====`);
+          console.log('受信フィールド:', Object.keys(state).join(', '));
+          
+          // デバッグ用：受信した状態の一部を詳細表示
+          if (state.batPct != null) {
+            console.log('✓ batPct:', state.batPct);
+          } else {
+            console.log('✗ batPct: 未受信');
+          }
+          
+          if (state.name) {
+            console.log('✓ name:', state.name);
+          }
+          
+          if (state.cleanMissionStatus) {
+            console.log('✓ cleanMissionStatus:', JSON.stringify(state.cleanMissionStatus));
+          }
           
           // バッテリー情報が含まれている場合
           if (state.batPct != null) {
             batteryLevel = state.batPct;
-            console.log(`バッテリー残量を取得: ${batteryLevel}%`);
+            console.log(`\n✓✓ バッテリー残量を取得: ${batteryLevel}%`);
           }
           
           // デバイス名が含まれている場合
@@ -168,7 +187,11 @@ async function main() {
             resolved = true; // 解決済みフラグを設定
             clearTimeout(timeoutId);
             robot.removeListener('state', stateHandler);
+            console.log('===========================\n');
             resolve({ batteryLevel, deviceName });
+          } else {
+            console.log('→ batPctが含まれていないため、次の状態更新を待機します...');
+            console.log('===========================\n');
           }
         };
         
@@ -177,6 +200,7 @@ async function main() {
           if (resolved) return; // 既に解決済みの場合は何もしない
           resolved = true; // 解決済みフラグを設定
           robot.removeListener('state', stateHandler);
+          console.error(`\n✗ タイムアウト: ${stateUpdateCount}回の状態更新を受信しましたが、batPctフィールドが含まれていませんでした。`);
           reject(new Error('バッテリー状態の取得がタイムアウトしました（30秒）'));
         }, 30000);
         
