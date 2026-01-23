@@ -139,34 +139,45 @@ async function main() {
     try {
       console.log('Roomba状態を取得中...');
       
-      // Local APIでバッテリー状態を取得（タイムアウト付き）
-      // getBasicMission()を使用してバッテリー情報を確実に取得
-      let timeoutId;
-      const missionPromise = robot.getBasicMission();
-      const timeoutPromise = new Promise((_, reject) => {
-        timeoutId = setTimeout(() => reject(new Error('バッテリー状態の取得がタイムアウトしました（30秒）')), 30000);
-      });
-      
-      const mission = await Promise.race([missionPromise, timeoutPromise]);
-      clearTimeout(timeoutId); // タイムアウトをクリーンアップ
-      
-      const batteryLevel = mission?.batPct;
-      
-      // デバイス名を取得（別途getRobotStateで取得を試みる）
+      // MQTTメッセージを受信してバッテリー状態を取得
+      // on('state')イベントでリアルタイムに状態を監視
+      let stateReceived = false;
+      let batteryLevel = null;
       let deviceName = 'Roomba';
-      try {
-        let nameTimeoutId;
-        const nameState = await Promise.race([
-          robot.getRobotState(['name']),
-          new Promise((_, reject) => {
-            nameTimeoutId = setTimeout(() => reject(new Error('timeout')), 5000);
-          })
-        ]);
-        clearTimeout(nameTimeoutId); // タイムアウトをクリーンアップ
-        deviceName = nameState?.name ?? 'Roomba';
-      } catch (e) {
-        // デバイス名の取得に失敗してもバッテリーチェックは続行
-        console.log('デバイス名の取得をスキップしました');
+      
+      const stateHandler = (state) => {
+        console.log('状態更新を受信:', Object.keys(state).join(', '));
+        
+        // バッテリー情報が含まれている場合
+        if (state.batPct !== undefined && state.batPct !== null) {
+          batteryLevel = state.batPct;
+          stateReceived = true;
+          console.log(`バッテリー残量を取得: ${batteryLevel}%`);
+        }
+        
+        // デバイス名が含まれている場合
+        if (state.name) {
+          deviceName = state.name;
+        }
+      };
+      
+      // 状態更新イベントをリッスン
+      robot.on('state', stateHandler);
+      
+      // バッテリー情報が取得できるまで待機（タイムアウト付き）
+      const startTime = Date.now();
+      const timeout = 30000; // 30秒
+      
+      while (!stateReceived && (Date.now() - startTime) < timeout) {
+        await new Promise(resolve => setTimeout(resolve, 500)); // 500ms待機
+      }
+      
+      // イベントハンドラーを削除
+      robot.removeListener('state', stateHandler);
+      
+      // タイムアウトチェック
+      if (!stateReceived) {
+        throw new Error('バッテリー状態の取得がタイムアウトしました（30秒）');
       }
       
       // バッテリー情報が取得できない場合はエラー
