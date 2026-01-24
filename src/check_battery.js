@@ -133,10 +133,49 @@ async function main() {
     process.exit(1);
   }
   
+  console.log(`\nRoombaへの接続を開始します...`);
+  console.log(`  BLID: ${BLID}`);
+  console.log(`  IP: ${roombaIP}`);
+  console.log(`  PASSWORD: ${PASSWORD ? '(設定済み)' : '(未設定)'}`);
+  
   const robot = new dorita980.Local(BLID, PASSWORD, roombaIP);
+  
+  console.log('✓ dorita980.Localインスタンスを作成しました');
+  console.log('MQTT接続を待機中...');
+
+  // 接続タイムアウト（60秒）
+  const connectTimeout = setTimeout(() => {
+    console.error('\n✗ エラー: Roombaへの接続がタイムアウトしました（60秒）');
+    console.error('考えられる原因:');
+    console.error('  1. RoombaがWi-Fiネットワークに接続されていない');
+    console.error('  2. IPアドレスが正しくない');
+    console.error('  3. BLIDまたはパスワードが正しくない');
+    console.error('  4. Roombaのファームウェアが対応していない');
+    process.exit(1);
+  }, 60000);
+
+  // エラーイベントのリスナー
+  robot.on('error', (error) => {
+    clearTimeout(connectTimeout);
+    console.error('\n✗ Roomba接続エラー:', error.message);
+    console.error('詳細:', error);
+    process.exit(1);
+  });
+
+  // オフラインイベントのリスナー
+  robot.on('offline', () => {
+    console.log('\n⚠ Roombaがオフラインになりました');
+  });
+
+  // クローズイベントのリスナー
+  robot.on('close', () => {
+    console.log('\n⚠ Roomba接続が切断されました');
+  });
 
   robot.on('connect', async () => {
     try {
+      clearTimeout(connectTimeout); // 接続タイムアウトをクリア
+      console.log('\n✓✓ Roomba接続成功！');
       console.log('Roomba状態を取得中...');
       console.log('デバッグ: MQTT接続が確立されました。状態更新を待機しています...');
       
