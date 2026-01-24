@@ -144,21 +144,31 @@ async function main() {
   console.log('MQTT接続を待機中...');
 
   // 接続タイムアウト（60秒）
-  const connectTimeout = setTimeout(() => {
+  const connectTimeout = setTimeout(async () => {
     console.error('\n✗ エラー: Roombaへの接続がタイムアウトしました（60秒）');
     console.error('考えられる原因:');
     console.error('  1. RoombaがWi-Fiネットワークに接続されていない');
     console.error('  2. IPアドレスが正しくない');
     console.error('  3. BLIDまたはパスワードが正しくない');
     console.error('  4. Roombaのファームウェアが対応していない');
+    try {
+      await robot.end();
+    } catch (e) {
+      // 接続終了時のエラーは無視
+    }
     process.exit(1);
   }, 60000);
 
   // エラーイベントのリスナー
-  robot.on('error', (error) => {
+  robot.on('error', async (error) => {
     clearTimeout(connectTimeout);
     console.error('\n✗ Roomba接続エラー:', error.message);
     console.error('詳細:', error);
+    try {
+      await robot.end();
+    } catch (e) {
+      // 接続終了時のエラーは無視
+    }
     process.exit(1);
   });
 
