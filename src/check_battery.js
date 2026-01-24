@@ -284,16 +284,6 @@ async function main() {
       process.exit(1);
     }
   });
-
-  robot.on('error', async (error) => {
-    console.error('Roomba接続エラー:', error);
-    try {
-      await robot.end();
-    } catch (e) {
-      // 接続終了時のエラーは無視
-    }
-    process.exit(1);
-  });
 }
 
 main();
