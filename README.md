@@ -62,9 +62,32 @@ npm install
 
 ### 3. Roombaの認証情報を取得
 
-Local API経由でアクセスするには、RoombaのBLIDとパスワードが必要です。
+Local API経由でアクセスするには、RoombaのBLIDとパスワードが必要です。以下のいずれかの方法で取得できます。
 
-#### dorita980を使用してBLIDとパスワードを取得
+#### 方法1: iRobotアカウントから自動取得（推奨）
+
+iRobotアカウントのメールアドレスとパスワードを使用して、自動的にBLIDとパスワードを取得し、`.env`ファイルを更新します：
+
+```bash
+./update_roomba_credentials.sh <iRobotメールアドレス> <iRobotパスワード>
+```
+
+**例：**
+```bash
+./update_roomba_credentials.sh your-email@example.com your-password
+```
+
+このスクリプトは以下を自動的に実行します：
+- iRobotクラウドから最新のRoomba認証情報を取得
+- 既存の`.env`ファイルをバックアップ
+- 新しいBLID、パスワード、IPアドレスで`.env`ファイルを更新
+
+**メリット：**
+- Roombaの物理的な操作が不要
+- 複数のRoombaがある場合でも簡単
+- 既存の`.env`ファイルを自動的にバックアップ
+
+#### 方法2: dorita980を使用してローカルで取得
 
 ```bash
 # dorita980をグローバルにインストール
@@ -78,6 +101,10 @@ get-roomba-password
 ```
 
 このコマンドで、BLIDとパスワードの両方が表示されます。
+
+**メリット：**
+- インターネット接続不要
+- iRobotアカウントのパスワードを入力する必要がない
 
 ### 4. 環境変数の設定
 
