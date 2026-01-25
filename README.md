@@ -66,13 +66,21 @@ Local API経由でアクセスするには、RoombaのBLIDとパスワードが�
 
 #### 方法1: iRobotアカウントから自動取得（推奨）
 
-iRobotアカウントのメールアドレスとパスワードを使用して、自動的にBLIDとパスワードを取得し、`.env`ファイルを更新します：
+iRobotアカウントのメールアドレスを使用して、自動的にBLIDとパスワードを取得し、`.env`ファイルを更新します：
 
 ```bash
-./update_roomba_credentials.sh <iRobotメールアドレス> <iRobotパスワード>
+./update_roomba_credentials.sh <iRobotメールアドレス>
 ```
 
+パスワードは対話式で入力を求められます（シェル履歴に残りません）。
+
 **例：**
+```bash
+./update_roomba_credentials.sh your-email@example.com
+# パスワードの入力を求められます（入力は表示されません）
+```
+
+**パスワードをコマンドラインで指定する場合**（非推奨：シェル履歴に残ります）：
 ```bash
 ./update_roomba_credentials.sh your-email@example.com your-password
 ```

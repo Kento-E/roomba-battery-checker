@@ -9,17 +9,33 @@ echo "=== Roomba認証情報更新ツール ==="
 echo ""
 
 # 引数チェック
-if [ $# -ne 2 ]; then
-  echo "使用方法: $0 <iRobotメールアドレス> <iRobotパスワード>"
+if [ $# -eq 0 ]; then
+  echo "使用方法: $0 <iRobotメールアドレス> [iRobotパスワード]"
   echo ""
-  echo "例: $0 your-email@example.com your-password"
+  echo "例: $0 your-email@example.com"
+  echo "    （パスワードは対話式で入力を求められます）"
+  echo ""
+  echo "または: $0 your-email@example.com your-password"
+  echo "    （パスワードをコマンドラインで指定。シェル履歴に残る可能性があります）"
   echo ""
   echo "注意: このスクリプトはiRobotクラウドアカウントの認証情報を使用してRoombaのBLIDとパスワードを取得します。"
   exit 1
 fi
 
 EMAIL="$1"
-PASSWORD="$2"
+
+# パスワードが引数で指定されているかチェック
+if [ $# -ge 2 ]; then
+  PASSWORD="$2"
+  echo "⚠ 警告: パスワードがコマンドライン引数で指定されました。"
+  echo "   シェル履歴に残る可能性があります。使用後は 'history -c' でクリアすることを推奨します。"
+  echo ""
+else
+  # 対話式でパスワードを入力
+  echo "iRobotアカウントのパスワードを入力してください（入力は表示されません）:"
+  read -s PASSWORD
+  echo ""
+fi
 
 echo "iRobotアカウント: $EMAIL"
 echo ""
