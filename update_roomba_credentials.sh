@@ -41,11 +41,30 @@ echo "iRobotアカウント: $EMAIL"
 echo ""
 
 # 依存関係のチェックとインストール
+echo "📦 依存関係をチェック中..."
 if [ ! -d "node_modules" ] || [ ! -d "node_modules/dorita980" ]; then
-  echo "📦 依存関係をインストール中..."
-  npm install
+  echo "依存関係が見つかりません。インストールを開始します..."
+  npm install || {
+    echo ""
+    echo "エラー: 依存関係のインストールに失敗しました。"
+    echo "npm install を手動で実行してから、このスクリプトを再度実行してください。"
+    exit 1
+  }
   echo ""
 fi
+
+# dorita980モジュールの存在を確認
+if [ ! -d "node_modules/dorita980" ]; then
+  echo "エラー: dorita980モジュールが見つかりません。"
+  echo ""
+  echo "以下のコマンドを実行してから、このスクリプトを再度実行してください:"
+  echo "  npm install"
+  echo ""
+  exit 1
+fi
+
+echo "✓ 依存関係を確認しました"
+echo ""
 
 # get-roomba-password-cloudを実行
 echo "🔍 iRobotクラウドからRoomba認証情報を取得中..."
@@ -108,6 +127,14 @@ EOF
 OUTPUT=$(node "$TEMP_SCRIPT" "$EMAIL" "$PASSWORD" 2>&1) || {
   echo "$OUTPUT"
   rm -f "$TEMP_SCRIPT"
+  echo ""
+  echo "エラー: Node.jsスクリプトの実行に失敗しました。"
+  echo ""
+  if echo "$OUTPUT" | grep -q "Cannot find module"; then
+    echo "モジュールが見つかりません。以下のコマンドで依存関係をインストールしてください:"
+    echo "  npm install"
+    echo ""
+  fi
   exit 1
 }
 
