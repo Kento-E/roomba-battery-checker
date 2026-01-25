@@ -173,13 +173,35 @@ async function main() {
   });
 
   // オフラインイベントのリスナー
-  robot.on('offline', () => {
-    console.log('\n⚠ Roombaがオフラインになりました');
+  robot.on('offline', async () => {
+    clearTimeout(connectTimeout);
+    console.error('\n✗ エラー: Roombaがオフラインになりました');
+    console.error('考えられる原因:');
+    console.error('  1. Roombaの電源が切れている');
+    console.error('  2. RoombaがWi-Fiネットワークから切断された');
+    console.error('  3. BLIDまたはパスワードが正しくない');
+    try {
+      await robot.end();
+    } catch (e) {
+      // 接続終了時のエラーは無視
+    }
+    process.exit(1);
   });
 
   // クローズイベントのリスナー
-  robot.on('close', () => {
-    console.log('\n⚠ Roomba接続が切断されました');
+  robot.on('close', async () => {
+    clearTimeout(connectTimeout);
+    console.error('\n✗ エラー: Roomba接続が切断されました');
+    console.error('考えられる原因:');
+    console.error('  1. ネットワーク接続の問題');
+    console.error('  2. Roombaが応答しなくなった');
+    console.error('  3. 認証の問題（BLIDまたはパスワードが正しくない）');
+    try {
+      await robot.end();
+    } catch (e) {
+      // 接続終了時のエラーは無視
+    }
+    process.exit(1);
   });
 
   robot.on('connect', async () => {
