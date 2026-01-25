@@ -64,10 +64,7 @@ npx --yes --package=dorita980 get-roomba-password-cloud "$EMAIL" "$PASSWORD" > "
   echo "  - メールアドレスまたはパスワードが正しくない"
   echo "  - iRobotアカウントにRoombaが登録されていない"
   echo "  - ネットワーク接続の問題"
-  echo "  - dorita980パッケージのインストールに問題がある"
-  echo ""
-  echo "dorita980パッケージが正しくインストールされているか確認してください:"
-  echo "  npm install"
+  echo "  - npxの実行に問題がある（Node.jsが正しくインストールされているか確認）"
   echo ""
   exit 1
 }
@@ -89,10 +86,10 @@ ROOMBA_NAME=$(grep "Robot Name" "$TEMP_OUTPUT" | sed 's/.*Robot Name: *//' | tr 
 # 一時ファイルを削除
 rm -f "$TEMP_OUTPUT"
 
-
-
 if [ -z "$BLID" ] || [ -z "$ROOMBA_PASSWORD" ]; then
   echo "エラー: BLIDまたはパスワードの抽出に失敗しました。"
+  echo "get-roomba-password-cloudコマンドの出力形式が想定と異なる可能性があります。"
+  echo "上記の出力を確認してください。"
   exit 1
 fi
 
