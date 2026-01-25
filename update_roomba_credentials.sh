@@ -40,133 +40,56 @@ fi
 echo "iRobotアカウント: $EMAIL"
 echo ""
 
-# 依存関係のチェックとインストール
-echo "📦 依存関係をチェック中..."
-if [ ! -d "node_modules" ] || [ ! -d "node_modules/dorita980" ]; then
-  echo "依存関係が見つかりません。インストールを開始します..."
-  npm install || {
-    echo ""
-    echo "エラー: 依存関係のインストールに失敗しました。"
-    echo "npm install を手動で実行してから、このスクリプトを再度実行してください。"
-    exit 1
-  }
-  echo ""
-fi
-
-# dorita980モジュールの存在を確認
-if [ ! -d "node_modules/dorita980" ]; then
-  echo "エラー: dorita980モジュールが見つかりません。"
-  echo ""
-  echo "以下のコマンドを実行してから、このスクリプトを再度実行してください:"
-  echo "  npm install"
-  echo ""
-  exit 1
-fi
-
-echo "✓ 依存関係を確認しました"
-echo ""
+# Note: npxを使用するため、依存関係のチェックは不要
+# npx --yesオプションにより、dorita980パッケージが自動的にダウンロード・実行されます
 
 # get-roomba-password-cloudを実行
 echo "🔍 iRobotクラウドからRoomba認証情報を取得中..."
 echo ""
 
-# 一時ファイルにスクリプトを作成
-TEMP_SCRIPT=$(mktemp)
-cat > "$TEMP_SCRIPT" << 'EOF'
-const getPassword = require('dorita980').getPassword;
+# dorita980パッケージのCLIツールを直接使用
+echo "認証情報を取得しています..."
+echo ""
 
-const email = process.argv[2];
-const password = process.argv[3];
-
-console.log('認証情報を取得しています...');
-
-getPassword(email, password).then((robotData) => {
-  if (!robotData || robotData.length === 0) {
-    console.error('エラー: Roombaが見つかりませんでした。');
-    console.error('アカウントにRoombaが登録されているか確認してください。');
-    process.exit(1);
-  }
-
-  // 最初のRoombaの情報を使用
-  const robot = robotData[0];
-  
-  console.log('');
-  console.log('✓ Roomba認証情報を取得しました！');
-  console.log('');
-  console.log('Roomba名: ' + (robot.robotname || '(未設定)'));
-  console.log('BLID: ' + robot.blid);
-  console.log('パスワード: ' + robot.password);
-  console.log('IP: ' + (robot.ip || '(自動検出)'));
-  console.log('');
-  
-  // JSON形式で出力（シェルスクリプトから解析しやすくするため）
-  console.log('__JSON_START__');
-  console.log(JSON.stringify({
-    blid: robot.blid,
-    password: robot.password,
-    ip: robot.ip || '',
-    name: robot.robotname || ''
-  }));
-  console.log('__JSON_END__');
-}).catch((err) => {
-  console.error('');
-  console.error('エラー: 認証情報の取得に失敗しました。');
-  console.error('');
-  console.error('詳細: ' + err.message);
-  console.error('');
-  console.error('考えられる原因:');
-  console.error('  - メールアドレスまたはパスワードが正しくない');
-  console.error('  - iRobotアカウントにRoombaが登録されていない');
-  console.error('  - ネットワーク接続の問題');
-  console.error('');
-  process.exit(1);
-});
-EOF
-
-# Node.jsスクリプトを実行して結果を取得
-OUTPUT=$(node "$TEMP_SCRIPT" "$EMAIL" "$PASSWORD" 2>&1) || {
-  echo "$OUTPUT"
-  rm -f "$TEMP_SCRIPT"
+# npxを使ってget-roomba-password-cloudを実行
+# 出力を一時ファイルに保存
+TEMP_OUTPUT=$(mktemp)
+npx --yes --package=dorita980 get-roomba-password-cloud "$EMAIL" "$PASSWORD" > "$TEMP_OUTPUT" 2>&1 || {
+  cat "$TEMP_OUTPUT"
+  rm -f "$TEMP_OUTPUT"
   echo ""
-  echo "エラー: Node.jsスクリプトの実行に失敗しました。"
+  echo "エラー: 認証情報の取得に失敗しました。"
   echo ""
-  if echo "$OUTPUT" | grep -q "Cannot find module"; then
-    echo "モジュールが見つかりません。以下のコマンドで依存関係をインストールしてください:"
-    echo "  npm install"
-    echo ""
-  fi
+  echo "考えられる原因:"
+  echo "  - メールアドレスまたはパスワードが正しくない"
+  echo "  - iRobotアカウントにRoombaが登録されていない"
+  echo "  - ネットワーク接続の問題"
+  echo "  - dorita980パッケージのインストールに問題がある"
+  echo ""
+  echo "dorita980パッケージが正しくインストールされているか確認してください:"
+  echo "  npm install"
+  echo ""
   exit 1
 }
 
-# 一時ファイルを削除
-rm -f "$TEMP_SCRIPT"
-
-# JSON部分を抽出
-JSON_DATA=$(echo "$OUTPUT" | sed -n '/__JSON_START__/,/__JSON_END__/p' | grep -v '__JSON_' || echo "")
-
-if [ -z "$JSON_DATA" ]; then
-  echo "$OUTPUT"
-  echo ""
-  echo "エラー: 認証情報の解析に失敗しました。"
-  exit 1
-fi
-
-# JSON以外の部分（ログ）を表示
-echo "$OUTPUT" | grep -v '__JSON_START__' | grep -v '__JSON_END__' | grep -v '^{' | grep -v '^}' || true
+# 出力を表示
+cat "$TEMP_OUTPUT"
 echo ""
 
-# JSONから値を抽出（jqがあれば使用、なければシンプルなgrep）
-if command -v jq &> /dev/null; then
-  BLID=$(echo "$JSON_DATA" | jq -r '.blid')
-  ROOMBA_PASSWORD=$(echo "$JSON_DATA" | jq -r '.password')
-  ROOMBA_IP=$(echo "$JSON_DATA" | jq -r '.ip')
-  ROOMBA_NAME=$(echo "$JSON_DATA" | jq -r '.name')
-else
-  BLID=$(echo "$JSON_DATA" | grep -o '"blid":"[^"]*"' | cut -d'"' -f4)
-  ROOMBA_PASSWORD=$(echo "$JSON_DATA" | grep -o '"password":"[^"]*"' | cut -d'"' -f4)
-  ROOMBA_IP=$(echo "$JSON_DATA" | grep -o '"ip":"[^"]*"' | cut -d'"' -f4)
-  ROOMBA_NAME=$(echo "$JSON_DATA" | grep -o '"name":"[^"]*"' | cut -d'"' -f4)
-fi
+# BLID/パスワード/IPを抽出
+# 出力例:
+# BLID=> XXXXX
+# Password=> :1:1234567:XXXXX
+# IP=> 192.168.1.100
+BLID=$(grep "BLID=>" "$TEMP_OUTPUT" | sed 's/.*BLID=> *//' | tr -d '\r' | head -1)
+ROOMBA_PASSWORD=$(grep "Password=>" "$TEMP_OUTPUT" | sed 's/.*Password=> *//' | tr -d '\r' | head -1)
+ROOMBA_IP=$(grep "IP=>" "$TEMP_OUTPUT" | sed 's/.*IP=> *//' | tr -d '\r' | head -1)
+ROOMBA_NAME=$(grep "Robot Name" "$TEMP_OUTPUT" | sed 's/.*Robot Name: *//' | tr -d '\r' | head -1)
+
+# 一時ファイルを削除
+rm -f "$TEMP_OUTPUT"
+
+
 
 if [ -z "$BLID" ] || [ -z "$ROOMBA_PASSWORD" ]; then
   echo "エラー: BLIDまたはパスワードの抽出に失敗しました。"
