@@ -119,8 +119,12 @@ if [ -f "$ENV_FILE" ]; then
   cp "$ENV_FILE" "$BACKUP_FILE"
   echo "既存の.envファイルを $BACKUP_FILE にバックアップしました"
   
-  # 既存のROOMBA_BLID, ROOMBA_PASSWORD, ROOMBA_IPを削除
-  grep -v '^ROOMBA_BLID=' "$ENV_FILE" | grep -v '^ROOMBA_PASSWORD=' | grep -v '^ROOMBA_IP=' > "${ENV_FILE}.tmp" || true
+  # 既存のROOMBA_BLID, ROOMBA_PASSWORD, ROOMBA_IP、およびRoomba認証情報のコメントを削除
+  grep -v '^ROOMBA_BLID=' "$ENV_FILE" | \
+    grep -v '^ROOMBA_PASSWORD=' | \
+    grep -v '^ROOMBA_IP=' | \
+    grep -v '^# Roomba認証情報' | \
+    grep -v '^# Roomba名:' > "${ENV_FILE}.tmp" || true
   mv "${ENV_FILE}.tmp" "$ENV_FILE"
 else
   echo ".envファイルを新規作成します"
