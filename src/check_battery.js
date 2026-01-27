@@ -137,11 +137,24 @@ async function main() {
   console.log(`  BLID: ${BLID}`);
   console.log(`  IP: ${roombaIP}`);
   console.log(`  PASSWORD: ${PASSWORD ? '(設定済み)' : '(未設定)'}`);
+  console.log(`\n診断情報:`);
+  console.log(`  - BLID長: ${BLID.length}文字`);
+  console.log(`  - PASSWORD長: ${PASSWORD.length}文字`);
+  console.log(`  - RoombaアプリでROOMBA_IPアドレス(${roombaIP})に接続できることを確認してください`);
+  
+  // デバッグ: 接続オプションを表示
+  console.log(`\ndorita980接続オプション:`);
+  console.log(`  - TLS: 有効（Roomba 900シリーズ以降はデフォルト）`);
+  console.log(`  - ポート: 8883 (TLS)`);
   
   const robot = new dorita980.Local(BLID, PASSWORD, roombaIP);
   
-  console.log('✓ dorita980.Localインスタンスを作成しました');
+  console.log('\n✓ dorita980.Localインスタンスを作成しました');
   console.log('MQTT接続を待機中...');
+  console.log('注: 接続が即座に失敗する場合、以下を確認してください:');
+  console.log('  1. BLIDとパスワードが正しいこと（update_roomba_credentials.shで最新の情報を取得）');
+  console.log('  2. RoombaがWi-Fiに接続されていること（Roombaアプリで確認）');
+  console.log('  3. ファイアウォールがポート8883をブロックしていないこと');
 
   // 接続タイムアウト（60秒）
   const connectTimeout = setTimeout(async () => {
@@ -173,13 +186,25 @@ async function main() {
   });
 
   // オフラインイベントのリスナー
+  let offlineHandled = false;
   robot.on('offline', async () => {
+    if (offlineHandled) return;
+    offlineHandled = true;
     clearTimeout(connectTimeout);
-    console.error('\n✗ エラー: Roombaがオフラインになりました');
-    console.error('考えられる原因:');
-    console.error('  1. Roombaの電源が切れている');
-    console.error('  2. RoombaがWi-Fiネットワークから切断された');
-    console.error('  3. BLIDまたはパスワードが正しくない');
+    console.error('\n✗ エラー: Roombaがオフラインになりました（MQTT接続が即座に切断されました）');
+    console.error('\n考えられる原因:');
+    console.error('  1. 【最も可能性が高い】BLIDまたはパスワードが間違っている');
+    console.error('     → update_roomba_credentials.shを再実行して最新の認証情報を取得してください');
+    console.error('  2. Roombaの電源が切れているか、スリープモードになっている');
+    console.error('     → Roomba本体のCLEANボタンを押して起動してください');
+    console.error('  3. RoombaがWi-Fiネットワークから切断されている');
+    console.error('     → Roombaアプリで接続状態を確認してください');
+    console.error('  4. 【dorita980との互換性問題】Roombaのファームウェアバージョンが対応していない');
+    console.error('     → https://github.com/koalazak/dorita980 で対応機種を確認してください');
+    console.error('\n対処方法:');
+    console.error('  1. まず、./update_roomba_credentials.sh でBLIDとパスワードを再取得してください');
+    console.error('  2. Roomba本体のCLEANボタンを押して、Roombaが起動していることを確認してください');
+    console.error('  3. Roombaアプリで、Roombaに接続できることを確認してください');
     try {
       await robot.end();
     } catch (e) {
@@ -189,13 +214,18 @@ async function main() {
   });
 
   // クローズイベントのリスナー
+  let closeHandled = false;
   robot.on('close', () => {
+    if (closeHandled || offlineHandled) return; // offlineで既に処理済みの場合はスキップ
+    closeHandled = true;
     clearTimeout(connectTimeout);
     console.error('\n✗ エラー: Roomba接続が切断されました');
-    console.error('考えられる原因:');
+    console.error('\n考えられる原因:');
     console.error('  1. ネットワーク接続の問題');
-    console.error('  2. Roombaが応答しなくなった');
-    console.error('  3. 認証の問題（BLIDまたはパスワードが正しくない）');
+    console.error('  2. 認証エラー（BLIDまたはパスワードが正しくない）');
+    console.error('  3. Roombaが応答しなくなった');
+    console.error('\n対処方法:');
+    console.error('  - ./update_roomba_credentials.sh でBLIDとパスワードを再取得してください');
     // 接続は既に閉じているため、robot.end()は不要
     process.exit(1);
   });
