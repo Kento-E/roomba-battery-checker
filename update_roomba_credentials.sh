@@ -76,11 +76,13 @@ echo ""
 # BLID/パスワード/IPを抽出
 # 出力例:
 # BLID=> XXXXX
-# Password=> :1:1234567:XXXXX
+# Password=> :1:1234567:XXXXX <= Yes, all this string.
 # IP=> 192.168.1.100
-BLID=$(grep "BLID=>" "$TEMP_OUTPUT" | sed 's/.*BLID=> *//' | tr -d '\r' | head -1)
-ROOMBA_PASSWORD=$(grep "Password=>" "$TEMP_OUTPUT" | sed 's/.*Password=> *//' | tr -d '\r' | head -1)
-ROOMBA_IP=$(grep "IP=>" "$TEMP_OUTPUT" | sed 's/.*IP=> *//' | tr -d '\r' | head -1)
+# 注意: Password=>の後ろにコメント（<= Yes, all this string.）が含まれることがあるため、
+#       スペースまたは「<=」の前までを抽出する
+BLID=$(grep "BLID=>" "$TEMP_OUTPUT" | sed 's/.*BLID=> *//' | sed 's/ *<.*//' | tr -d '\r' | head -1)
+ROOMBA_PASSWORD=$(grep "Password=>" "$TEMP_OUTPUT" | sed 's/.*Password=> *//' | sed 's/ *<.*//' | tr -d '\r' | head -1)
+ROOMBA_IP=$(grep "IP=>" "$TEMP_OUTPUT" | sed 's/.*IP=> *//' | sed 's/ *<.*//' | tr -d '\r' | head -1)
 ROOMBA_NAME=$(grep "Robot Name" "$TEMP_OUTPUT" | sed 's/.*Robot Name: *//' | tr -d '\r' | head -1)
 
 # 一時ファイルを削除
@@ -91,6 +93,18 @@ if [ -z "$BLID" ] || [ -z "$ROOMBA_PASSWORD" ]; then
   echo "get-roomba-password-cloudコマンドの出力形式が想定と異なる可能性があります。"
   echo "上記の出力を確認してください。"
   exit 1
+fi
+
+# パスワード形式のバリデーション
+# Roombaのパスワードは通常 :1:数字:英数字 の形式
+if ! echo "$ROOMBA_PASSWORD" | grep -qE '^:1:[0-9]+:[A-Za-z0-9+/=]+$'; then
+  echo "⚠ 警告: パスワードの形式が通常と異なります。"
+  echo "  抽出されたパスワード: $ROOMBA_PASSWORD"
+  echo "  通常のパスワード形式: :1:数字:英数字"
+  echo ""
+  echo "このまま続行しますが、接続に失敗する可能性があります。"
+  echo "もし接続できない場合は、手動で.envファイルを確認してください。"
+  echo ""
 fi
 
 # .envファイルの更新
