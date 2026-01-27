@@ -151,10 +151,12 @@ async function main() {
   
   console.log('\n✓ dorita980.Localインスタンスを作成しました');
   console.log('MQTT接続を待機中...');
-  console.log('注: 接続が即座に失敗する場合、以下を確認してください:');
-  console.log('  1. BLIDとパスワードが正しいこと（update_roomba_credentials.shで最新の情報を取得）');
-  console.log('  2. RoombaがWi-Fiに接続されていること（Roombaアプリで確認）');
-  console.log('  3. ファイアウォールがポート8883をブロックしていないこと');
+  console.log('\n重要: 接続が即座に失敗する場合、以下を確認してください:');
+  console.log('  1. 【最重要】スマートフォンのiRobot/Roombaホームアプリを完全に終了してください');
+  console.log('     （アプリが開いているとMQTT接続がロックアウトされます）');
+  console.log('  2. BLIDとパスワードが正しいこと（update_roomba_credentials.shで最新の情報を取得）');
+  console.log('  3. RoombaがWi-Fiに接続されていること（Roombaアプリで確認）');
+  console.log('  4. Roombaがドック中の場合、CLEANボタンを押して起動中に接続してください');
 
   // 接続タイムアウト（60秒）
   const connectTimeout = setTimeout(async () => {
@@ -192,19 +194,23 @@ async function main() {
     offlineHandled = true;
     clearTimeout(connectTimeout);
     console.error('\n✗ エラー: Roombaがオフラインになりました（MQTT接続が即座に切断されました）');
-    console.error('\n考えられる原因:');
-    console.error('  1. 【最も可能性が高い】BLIDまたはパスワードが間違っている');
-    console.error('     → update_roomba_credentials.shを再実行して最新の認証情報を取得してください');
-    console.error('  2. Roombaの電源が切れているか、スリープモードになっている');
-    console.error('     → Roomba本体のCLEANボタンを押して起動してください');
-    console.error('  3. RoombaがWi-Fiネットワークから切断されている');
+    console.error('\n考えられる原因（可能性の高い順）:');
+    console.error('  1. 【最も見落とされがち】iRobot/Roombaホームアプリが開いている、または最近接続した');
+    console.error('     → スマートフォンのアプリを完全に終了してください（バックグラウンドからも削除）');
+    console.error('     → アプリを終了後、数分待ってから再実行してください');
+    console.error('  2. BLIDまたはパスワードが間違っている（または古い）');
+    console.error('     → ./update_roomba_credentials.sh を再実行して最新の認証情報を取得してください');
+    console.error('  3. Roombaがドック中でスリープモードになっている');
+    console.error('     → Roomba本体のCLEANボタンを押して起動中に接続を試みてください');
+    console.error('  4. RoombaがWi-Fiネットワークから切断されている');
     console.error('     → Roombaアプリで接続状態を確認してください');
-    console.error('  4. 【dorita980との互換性問題】Roombaのファームウェアバージョンが対応していない');
+    console.error('  5. 【dorita980との互換性問題】Roombaのファームウェアバージョンが対応していない');
     console.error('     → https://github.com/koalazak/dorita980 で対応機種を確認してください');
-    console.error('\n対処方法:');
-    console.error('  1. まず、./update_roomba_credentials.sh でBLIDとパスワードを再取得してください');
-    console.error('  2. Roomba本体のCLEANボタンを押して、Roombaが起動していることを確認してください');
-    console.error('  3. Roombaアプリで、Roombaに接続できることを確認してください');
+    console.error('\n対処方法（この順番で試してください）:');
+    console.error('  1. 【重要】スマートフォンのiRobot/Roombaホームアプリを完全に終了してください');
+    console.error('  2. Roomba本体のCLEANボタンを押して、Roombaが起動中であることを確認してください');
+    console.error('  3. ./update_roomba_credentials.sh でBLIDとパスワードを再取得してください');
+    console.error('  4. 上記を実施後、数分待ってから ./run_local.sh を再実行してください');
     try {
       await robot.end();
     } catch (e) {
