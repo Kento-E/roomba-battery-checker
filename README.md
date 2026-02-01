@@ -15,28 +15,9 @@ dorita980ライブラリのLocal APIを使用してRoombaと直接通信する�
 - **自動検出対応**: 動的IPアドレス（DHCP）環境でも安定動作
 - **メール通知**: バッテリー不足時に自動でメール送信
 
-### 対応機種
-
-このツールは、**Wi-Fi機能を搭載したiRobot HOME/Roombaホームアプリ対応のRoomba**のみをサポートしています。
-
-**対応モデル**:
-- Roomba 600シリーズ（Wi-Fi対応モデル）
-- Roomba 800シリーズ（Wi-Fi対応モデル）
-- Roomba 900シリーズ（980など）
-- Roomba e5
-- Roomba i7/i7+
-- Braava m6
-
-**非対応モデル**:
-- **Roomba 100シリーズ（1000シリーズを含む）**: Wi-Fi機能がないため対応していません
-- Wi-Fi機能のない旧型モデル全般
-
-詳細は[dorita980の対応機種リスト](https://github.com/koalazak/dorita980#supported-robots)を参照してください。
-
 ### 必要な環境
 
 - Android端末（Android 5.0以上推奨）
-- **Wi-Fi対応のRoomba**（上記の対応モデルを参照）
 - Roombaと同じWi-Fiネットワークに接続していること
 - Node.jsランタイム（Termux等で実行）
 
