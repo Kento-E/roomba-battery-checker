@@ -10,7 +10,7 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "dorita980": "^3.3.2",
-    "nodemailer": "^6.9.8"
+    "dorita980": "^3.1.11",
+    "nodemailer": "^7.0.12"
   }
 }
