@@ -56,8 +56,7 @@ echo ""
 TEMP_OUTPUT=$(mktemp)
 # スクリプト終了時に一時ファイルを確実にクリーンアップ
 trap 'rm -f "$TEMP_OUTPUT"' EXIT
-# セキュリティのためdorita980のバージョンを固定（supply-chain攻撃のリスク軽減）
-npx --yes --package=dorita980@3.1.3 get-roomba-password-cloud "$EMAIL" "$PASSWORD" > "$TEMP_OUTPUT" 2>&1 || {
+npx --yes --package=dorita980 get-roomba-password-cloud "$EMAIL" "$PASSWORD" > "$TEMP_OUTPUT" 2>&1 || {
   cat "$TEMP_OUTPUT"
   rm -f "$TEMP_OUTPUT"
   echo ""
