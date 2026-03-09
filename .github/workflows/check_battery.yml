@@ -1,0 +1,49 @@
+name: Roombaバッテリーチェック
+
+on:
+  schedule:
+    # 毎日午前8時（JST）に実行 = UTC 23:00（前日）
+    - cron: '0 23 * * *'
+  workflow_dispatch:
+    inputs:
+      force_notification:
+        description: '強制通知（バッテリー残量にかかわらずメールを送信）'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+
+permissions:
+  contents: read
+
+jobs:
+  check-battery:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: リポジトリをチェックアウト
+        uses: actions/checkout@v4
+
+      - name: Node.jsをセットアップ
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: 依存関係をインストール
+        run: npm ci
+
+      - name: Roombaバッテリーをチェック
+        env:
+          IROBOT_USERNAME: ${{ secrets.IROBOT_USERNAME }}
+          IROBOT_PASSWORD: ${{ secrets.IROBOT_PASSWORD }}
+          SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          SEND_FROM: ${{ secrets.SEND_FROM }}
+          SEND_TO: ${{ secrets.SEND_TO }}
+          FORCE_NOTIFICATION: ${{ github.event.inputs.force_notification || 'false' }}
+        run: npm run check-battery

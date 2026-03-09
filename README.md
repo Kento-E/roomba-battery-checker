@@ -1,181 +1,90 @@
 # roomba-battery-checker
 
-Androidで動作するRoombaバッテリー定期確認ツール🔋📱
+GitHub Actionsで動作するRoombaバッテリー定期確認ツール🔋
 
 ## 概要
 
-このツールは、Android端末上で定期的にRoombaのバッテリー状態を確認し、充電が100%でない場合にメール通知を送信するアプリケーションです。
+このツールは、GitHub Actionsで定期的にRoombaのバッテリー状態を確認し、充電が100%でない場合にメール通知を送信するアプリケーションです。
 
-iRobot Cloud HTTP APIを使用してRoombaの状態を取得するため、ローカルネットワークへの接続は不要です。iRobotアカウントさえあれば、どこからでも動作させることができます。Termuxのcronを使用した定期実行により、バックグラウンドでの安定した動作を実現します。
+iRobot Cloud HTTP APIを使用してRoombaの状態を取得するため、ローカルネットワークへの接続は不要です。iRobotアカウントさえあれば、GitHub Actions経由でクラウドから動作させることができます。
 
 ### 特徴
 
-- **Android端末で定期実行**: cronie（Termuxのcron実装）による確実なバックグラウンド実行（最小1分間隔）
+- **GitHub Actionsで定期実行**: スケジュール設定により毎日自動実行（デフォルト: 毎日午前8時JST）
 - **Cloud API使用**: iRobot Cloud HTTP API経由でバッテリー状態を取得（ローカルネットワーク不要）
 - **MQTTプロトコルv4対応**: Roomba Combo 10 Maxなどの最新機種にも対応
 - **メール通知**: バッテリー不足時に自動でメール送信
+- **手動実行**: GitHub ActionsのUIから手動でトリガー可能（疎通確認に便利）
 
 ### 必要な環境
 
-- Android端末（Android 5.0以上推奨）
-- インターネット接続
+- GitHubアカウント（このリポジトリをフォーク・または所有）
 - iRobotアカウント
-- Node.jsランタイム（Termux等で実行）
-
-## アーキテクチャ
-
-このツールは以下の構成で動作します：
-
-1. **Android端末**: Termuxアプリ内でNode.jsを実行
-2. **定期実行**: cron（Termux）で定期タスクを設定
-3. **バッテリーチェック**: iRobot Cloud HTTP API経由でロボット状態を取得
-4. **通知**: メール送信（SMTP経由）
+- SMTPサーバー（メール通知用）
 
 ## セットアップ
 
-### 1. Termuxのインストールと設定
+### 1. GitHub Secretsの設定
 
-Android端末にTermuxをインストールします：
+リポジトリの **Settings → Secrets and variables → Actions** から以下のSecretsを登録します：
 
-1. [Google Play Store](https://play.google.com/store/apps/details?id=com.termux) または [F-Droid](https://f-droid.org/packages/com.termux/) からTermuxをインストール
-2. Termuxを起動し、以下のコマンドでパッケージを更新：
+| Secret名 | 説明 | 必須 |
+|---|---|---|
+| `IROBOT_USERNAME` | iRobotアカウントのメールアドレス | ✅ |
+| `IROBOT_PASSWORD` | iRobotアカウントのパスワード | ✅ |
+| `SMTP_SERVER` | SMTPサーバーのホスト名（例: `smtp.gmail.com`） | ✅ |
+| `SMTP_PORT` | SMTPポート番号（例: `587`） | ✅ |
+| `SMTP_USER` | SMTP認証用のユーザー名（メールアドレス） | ✅ |
+| `SMTP_PASSWORD` | SMTP認証用のパスワード | ✅ |
+| `SEND_TO` | 通知先メールアドレス（カンマ区切りで複数指定可） | ✅ |
+| `SEND_FROM` | 送信元メールアドレス（省略時はSMTP_USERを使用） | オプション |
 
-```bash
-pkg update && pkg upgrade
-```
+### 2. ワークフローの確認
 
-3. Node.jsをインストール：
+`.github/workflows/check_battery.yml` に定義されたワークフローが自動的に動作します。
 
-```bash
-pkg install nodejs-lts git
-```
+デフォルトのスケジュール：**毎日午前8時（JST）**
 
-### 2. プロジェクトのセットアップ
+スケジュールを変更したい場合は、`check_battery.yml`の`cron`の値を編集してください：
 
-```bash
-# リポジトリをクローン
-git clone https://github.com/YOUR_USERNAME/roomba-battery-checker.git
-cd roomba-battery-checker
-
-# 依存関係をインストール
-npm install
-```
-
-### 3. 環境変数の設定
-
-```bash
-# .env.exampleをコピーして.envを作成
-cp .env.example .env
-
-# .envファイルを編集して認証情報を設定
-nano .env  # またはvim .env
-```
-
-`.env`ファイルに以下の情報を設定：
-
-**必須の設定：**
-
-- `IROBOT_USERNAME`: iRobotアカウントのメールアドレス
-- `IROBOT_PASSWORD`: iRobotアカウントのパスワード
-- `SMTP_SERVER`: SMTPサーバーのホスト名
-- `SMTP_PORT`: SMTPポート番号（通常は587）
-- `SMTP_USER`: SMTP認証用のユーザー名
-- `SMTP_PASSWORD`: SMTP認証用のパスワード
-- `SEND_TO`: 通知先メールアドレス
-
-**オプションの設定：**
-
-- `SEND_FROM`: 送信元メールアドレス（省略時はSMTP_USERを使用）
-
-### 4. 定期実行の設定
-
-Termuxのcronを使用して定期実行を設定します：
-
-```bash
-# cronie（cron実装）をインストール
-pkg install cronie termux-services
-
-# サービスを再起動
-sv-enable crond
-
-# crontabを編集
-crontab -e
-```
-
-crontabに以下を追加（例：毎日午前8時に実行）：
-
-```cron
-0 8 * * * cd $HOME/roomba-battery-checker && npm run check-battery
-```
-
-**パスの確認**:
-プロジェクトをクローンしたディレクトリに合わせてパスを変更してください。現在のパスは`pwd`コマンドで確認できます。
-
-**注意事項：**
-
-- Termuxのcronは、Termuxアプリが強制終了されていない状態でのみ動作します
-- Android端末の省電力設定でTermuxをバックグラウンド動作許可に設定してください
-- より確実な実行には、Termux:Bootアプリと組み合わせる方法もあります
-
-### 5. Termux:Boot（オプション - 推奨）
-
-端末再起動時にも自動実行するには、Termux:Bootを使用します：
-
-1. [Termux:Boot](https://f-droid.org/packages/com.termux.boot/) をインストール
-2. 起動スクリプトを作成：
-
-```bash
-mkdir -p ~/.termux/boot
-nano ~/.termux/boot/start-cron
-```
-
-以下の内容を記述：
-
-```bash
-#!/data/data/com.termux/files/usr/bin/sh
-termux-wake-lock
-sv-enable crond
-```
-
-実行権限を付与：
-
-```bash
-chmod +x ~/.termux/boot/start-cron
+```yaml
+schedule:
+  - cron: '0 23 * * *'  # UTC 23:00 = JST 08:00
 ```
 
 ## 使い方
 
-### 手動実行
+### 定期実行
+
+設定後は何もしなくても毎日自動実行されます。バッテリーが100%未満の場合、登録したメールアドレスに通知が届きます。
+
+### 手動実行（疎通確認）
+
+GitHub ActionsのUIから手動でトリガーできます：
+
+1. リポジトリの **Actions** タブを開く
+2. **Roombaバッテリーチェック** ワークフローを選択
+3. **Run workflow** をクリック
+4. `force_notification` を `true` にすると、バッテリー残量にかかわらず通知メールが送信されます
+
+### ローカルでのテスト実行
+
+ローカル環境でテストする場合は、`.env`ファイルを設定して`run_local.sh`を使用します：
 
 ```bash
-cd /path/to/roomba-battery-checker
-npm run check-battery
-```
-
-または：
-
-```bash
-chmod +x run_local.sh
+cp .env.example .env
+# .envファイルを編集してIROBOT_USERNAME/IROBOT_PASSWORD等を設定
 ./run_local.sh
 ```
 
 ## トラブルシューティング
 
-### Android/Termux関連
+### GitHub Actions関連
 
-#### cronが動作しない
+#### ワークフローが実行されない
 
-1. **crondサービスが起動しているか確認**：
-
-   ```bash
-   sv status crond
-   ```
-
-2. **Termuxがバックグラウンドで動作許可されているか確認**：
-   - Android設定 → アプリ → Termux → バッテリー → バックグラウンド制限なし
-
-3. **Termux:Bootを使用**（推奨）：
-   端末再起動時にcrondが自動起動されるように設定
+- リポジトリのActionsが有効になっているか確認（**Settings → Actions → General → Allow all actions**）
+- Secretsが正しく設定されているか確認
 
 ### iRobot Cloud API関連
 
@@ -188,8 +97,3 @@ chmod +x run_local.sh
 
 - Roombaの電源が入っており、インターネットに接続されているか確認
 - iRobotアプリで正常にロボットが表示されているか確認
-
-## 参考資料
-
-- [Termux公式ドキュメント](https://termux.dev/)
-- [Termux:Boot](https://wiki.termux.com/wiki/Termux:Boot)

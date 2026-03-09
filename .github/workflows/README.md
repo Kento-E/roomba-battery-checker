@@ -4,6 +4,39 @@
 
 ## ワークフロー
 
+### Roombaバッテリーチェック - check_battery.yml
+
+Roombaのバッテリー残量をiRobot Cloud APIで確認し、100%未満の場合にメール通知を送信します。
+
+#### トリガー条件
+
+- **スケジュール**: 毎日UTC 23:00（JST 08:00）に自動実行（`schedule: cron: '0 23 * * *'`）
+- **手動実行**: `workflow_dispatch` による手動トリガー（`force_notification` オプション付き）
+
+#### 必要なSecrets
+
+| Secret名 | 説明 |
+|---|---|
+| `IROBOT_USERNAME` | iRobotアカウントのメールアドレス |
+| `IROBOT_PASSWORD` | iRobotアカウントのパスワード |
+| `SMTP_SERVER` | SMTPサーバーのホスト名 |
+| `SMTP_PORT` | SMTPポート番号 |
+| `SMTP_USER` | SMTP認証用ユーザー名 |
+| `SMTP_PASSWORD` | SMTP認証用パスワード |
+| `SEND_TO` | 通知先メールアドレス |
+| `SEND_FROM` | 送信元メールアドレス（オプション） |
+
+#### 動作の流れ
+
+1. リポジトリをチェックアウト（`actions/checkout@v4`）
+2. Node.js 20をセットアップ（`actions/setup-node@v4`、npmキャッシュ有効）
+3. `npm ci` で依存関係をインストール
+4. GitHub SecretsをEnvironment variablesとして設定し `npm run check-battery` を実行
+
+#### 手動実行オプション
+
+- `force_notification`: `true` にするとバッテリー残量にかかわらずメール通知を送信（疎通確認に使用）
+
 ### 自動マージ - auto-merge.yml
 
 PRが承認されたときに自動的にマージを実行します。
