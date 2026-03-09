@@ -135,18 +135,32 @@ async function main() {
   robot.on('connect', async () => {
     try {
       console.log('Roomba状態を取得中...');
-      
-      // Local APIでバッテリー状態を取得
-      const state = await robot.getRobotState(['batPct', 'name']);
-      
-      const batteryLevel = state?.batPct;
-      const deviceName = state?.name ?? 'Roomba';
-      
-      // バッテリー情報が取得できない場合はエラー
-      if (batteryLevel === undefined || batteryLevel === null) {
-        throw new Error('バッテリー情報を取得できませんでした。');
-      }
-      
+
+      const timeout = 60000;
+
+      // on('state')イベントでbatPctが含まれるメッセージを待つ
+      const { batteryLevel, deviceName } = await new Promise((resolve, reject) => {
+        let latestName = 'Roomba';
+
+        const timer = setTimeout(() => {
+          robot.removeListener('state', onState);
+          reject(new Error('バッテリー状態の取得がタイムアウトしました（60秒）'));
+        }, timeout);
+
+        function onState(state) {
+          if (state.name !== undefined) {
+            latestName = state.name;
+          }
+          if (state.batPct !== undefined) {
+            clearTimeout(timer);
+            robot.removeListener('state', onState);
+            resolve({ batteryLevel: state.batPct, deviceName: latestName });
+          }
+        }
+
+        robot.on('state', onState);
+      });
+
       console.log(`デバイス: ${deviceName}, バッテリー残量: ${batteryLevel}%`);
 
       // バッテリーが100%でない場合、または強制通知フラグがONの場合はメール通知
