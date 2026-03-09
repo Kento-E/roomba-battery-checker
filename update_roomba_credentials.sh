@@ -157,8 +157,6 @@ if [ -n "$ROOMBA_IP" ]; then
   echo "  ROOMBA_IP=$ROOMBA_IP"
 fi
 echo ""
-echo "注意: パスワードは.envファイルに保存されました（セキュリティのため表示されません）"
-echo ""
 echo "バッテリーチェックを実行する準備ができました。"
 echo "run_local.shを実行してバッテリー残量を確認できます。"
 echo ""
