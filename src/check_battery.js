@@ -147,14 +147,15 @@ async function main() {
           reject(new Error('バッテリー状態の取得がタイムアウトしました（60秒）'));
         }, timeout);
 
-        function onState(state) {
-          if (state.name !== undefined) {
-            latestName = state.name;
+        function onState(data) {
+          const reported = data?.state?.reported;
+          if (reported?.name !== undefined) {
+            latestName = reported.name;
           }
-          if (state.batPct !== undefined) {
+          if (reported?.batPct !== undefined) {
             clearTimeout(timer);
             robot.removeListener('state', onState);
-            resolve({ batteryLevel: state.batPct, deviceName: latestName });
+            resolve({ batteryLevel: reported.batPct, deviceName: latestName });
           }
         }
 
