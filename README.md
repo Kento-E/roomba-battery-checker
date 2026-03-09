@@ -26,18 +26,9 @@ iRobot Cloud HTTP APIを使用してRoombaの状態を取得するため、ロ�
 
 ### 1. GitHub Secretsの設定
 
-リポジトリの **Settings → Secrets and variables → Actions** から以下のSecretsを登録します：
+リポジトリの **Settings → Secrets and variables → Actions** から必要なSecretsを登録します。
 
-| Secret名 | 説明 | 必須 |
-|---|---|---|
-| `IROBOT_USERNAME` | iRobotアカウントのメールアドレス | ✅ |
-| `IROBOT_PASSWORD` | iRobotアカウントのパスワード | ✅ |
-| `SMTP_SERVER` | SMTPサーバーのホスト名（例: `smtp.gmail.com`） | ✅ |
-| `SMTP_PORT` | SMTPポート番号（例: `587`） | ✅ |
-| `SMTP_USER` | SMTP認証用のユーザー名（メールアドレス） | ✅ |
-| `SMTP_PASSWORD` | SMTP認証用のパスワード | ✅ |
-| `SEND_TO` | 通知先メールアドレス（カンマ区切りで複数指定可） | ✅ |
-| `SEND_FROM` | 送信元メールアドレス（省略時はSMTP_USERを使用） | オプション |
+必要なSecret一覧は [`.github/workflows/README.md`](.github/workflows/README.md#必要なsecrets) を参照してください。
 
 ### 2. ワークフローの確認
 
