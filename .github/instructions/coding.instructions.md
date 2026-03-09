@@ -34,9 +34,13 @@
 
 ```bash
 # リンター実行
-npx eslint src/
+npm run lint
 
 # 自動修正
+npm run lint:fix
+
+# または直接実行も可能
+npx eslint src/
 npx eslint src/ --fix
 npx prettier --write src/
 
