@@ -33,18 +33,13 @@
 **コード変更後は必ずリンターを実行してコミットすること**
 
 ```bash
-# リンター実行
+# リンター実行（推奨）
 npm run lint
 
-# 自動修正
+# 自動修正（推奨）
 npm run lint:fix
 
-# または直接実行も可能
-npx eslint src/
-npx eslint src/ --fix
-npx prettier --write src/
-
-# 個別ファイルの場合
+# 個別ファイルの場合はnpxで直接実行
 npx eslint src/check_battery.js
 npx prettier --write src/check_battery.js
 ```
