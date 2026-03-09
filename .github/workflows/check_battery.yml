@@ -2,8 +2,8 @@ name: Roombaバッテリーチェック
 
 on:
   schedule:
-    # 毎日午前8時（JST）に実行 = UTC 23:00（前日）
-    - cron: '0 23 * * *'
+    # 毎週月・水・金の午前6時（JST）に実行 = UTC 21:00（前日）
+    - cron: '0 21 * * 0,2,4'
   workflow_dispatch:
     inputs:
       force_notification:

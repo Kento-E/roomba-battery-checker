@@ -10,7 +10,7 @@ Roombaのバッテリー残量をiRobot Cloud APIで確認し、100%未満の場
 
 #### トリガー条件
 
-- **スケジュール**: 毎日UTC 23:00（JST 08:00）に自動実行（`schedule: cron: '0 23 * * *'`）
+- **スケジュール**: `check_battery.yml` の `schedule.cron` に定義されたタイミングで自動実行
 - **手動実行**: `workflow_dispatch` による手動トリガー（`force_notification` オプション付き）
 
 #### 必要なSecrets

@@ -10,7 +10,7 @@ iRobot Cloud HTTP APIを使用してRoombaの状態を取得するため、ロ�
 
 ### 特徴
 
-- **GitHub Actionsで定期実行**: スケジュール設定により毎日自動実行（デフォルト: 毎日午前8時JST）
+- **GitHub Actionsで定期実行**: スケジュール設定により自動実行（詳細は `.github/workflows/check_battery.yml` 参照）
 - **Cloud API使用**: iRobot Cloud HTTP API経由でバッテリー状態を取得（ローカルネットワーク不要）
 - **MQTTプロトコルv4対応**: Roomba Combo 10 Maxなどの最新機種にも対応
 - **メール通知**: バッテリー不足時に自動でメール送信
@@ -43,20 +43,13 @@ iRobot Cloud HTTP APIを使用してRoombaの状態を取得するため、ロ�
 
 `.github/workflows/check_battery.yml` に定義されたワークフローが自動的に動作します。
 
-デフォルトのスケジュール：**毎日午前8時（JST）**
-
-スケジュールを変更したい場合は、`check_battery.yml`の`cron`の値を編集してください：
-
-```yaml
-schedule:
-  - cron: '0 23 * * *'  # UTC 23:00 = JST 08:00
-```
+スケジュールは `check_battery.yml` の `cron` 設定で管理されています。変更したい場合は `check_battery.yml` の `cron` の値を直接編集してください。
 
 ## 使い方
 
 ### 定期実行
 
-設定後は何もしなくても毎日自動実行されます。バッテリーが100%未満の場合、登録したメールアドレスに通知が届きます。
+設定後は何もしなくても定期的に自動実行されます。バッテリーが100%未満の場合、登録したメールアドレスに通知が届きます。
 
 ### 手動実行（疎通確認）
 
