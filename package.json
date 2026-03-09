@@ -8,7 +8,12 @@
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix && prettier --write src/"
   },
-  "keywords": ["roomba", "irobot", "battery", "notification"],
+  "keywords": [
+    "roomba",
+    "irobot",
+    "battery",
+    "notification"
+  ],
   "author": "",
   "license": "MIT",
   "dependencies": {

@@ -71,6 +71,31 @@ GitHub ActionsのUIから手動でトリガーできます：
 
 ローカル環境でテストする場合は、`.env`ファイルを設定して`run_local.sh`を使用します：
 
+**推奨**: 実行スクリプトを使用する方法（依存関係のインストールと環境変数チェックを自動で実行）
+
+```bash
+cd /path/to/roomba-battery-checker
+chmod +x run_local.sh
+./run_local.sh
+```
+
+このスクリプトは以下を自動で実行します：
+- `.env`ファイルの存在チェック
+- 必要に応じて依存関係のインストール（`npm install`）
+- バッテリーチェックの実行
+
+**疎通確認（バッテリー100%でも通知を送信）**:
+
+```bash
+./run_local.sh --force-notification
+# または短縮形
+./run_local.sh -f
+```
+
+このオプションを使用すると、バッテリー残量が100%の場合でもメール通知が送信されます。SMTP設定の疎通確認に便利です。
+
+**直接実行する場合**:
+
 ```bash
 cp .env.example .env
 # .envファイルを編集してIROBOT_USERNAME/IROBOT_PASSWORD等を設定
