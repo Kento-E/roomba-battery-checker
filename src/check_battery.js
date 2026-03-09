@@ -4,6 +4,7 @@ const nodemailer = require('nodemailer');
 // 環境変数から設定を読み込み
 const BLID = process.env.ROOMBA_BLID;
 const PASSWORD = process.env.ROOMBA_PASSWORD;
+const ROOMBA_IP = process.env.ROOMBA_IP;
 const SMTP_SERVER = process.env.SMTP_SERVER;
 const SMTP_PORT = process.env.SMTP_PORT || '587';
 const SMTP_USER = process.env.SMTP_USER;
@@ -16,6 +17,17 @@ const FORCE_NOTIFICATION = process.env.FORCE_NOTIFICATION === 'true';
 if (!BLID || !PASSWORD) {
   console.error('エラー: ROOMBA_BLIDまたはROOMBA_PASSWORDが設定されていません');
   process.exit(1);
+}
+
+// IPアドレスの形式チェック（指定されている場合のみ）
+if (ROOMBA_IP && ROOMBA_IP.trim() !== '') {
+  // 各オクテットが0-255の範囲内にあることを検証
+  const octet = '(25[0-5]|2[0-4]\\d|1?\\d?\\d)';
+  const ipPattern = new RegExp(`^${octet}\\.${octet}\\.${octet}\\.${octet}$`);
+  if (!ipPattern.test(ROOMBA_IP.trim())) {
+    console.error('エラー: ROOMBA_IPの形式が不正です。正しいIPアドレス（例: 192.168.1.100）を指定してください');
+    process.exit(1);
+  }
 }
 
 if (!SMTP_SERVER || !SMTP_USER || !SMTP_PASSWORD || !SEND_TO) {
@@ -71,70 +83,104 @@ ${statusMessage}`;
   }
 }
 
+// Roomba IPアドレスを取得する関数（自動検出または手動指定）
+async function getRoombaIP() {
+  // 空文字列や空白のみの値は「未設定」とみなし、自動検出にフォールバックする
+  if (ROOMBA_IP && ROOMBA_IP.trim() !== '') {
+    console.log(`指定されたIPアドレスを使用: ${ROOMBA_IP.trim()}`);
+    return ROOMBA_IP.trim();
+  }
+
+  console.log('Roombaを自動検出中...');
+  return new Promise((resolve, reject) => {
+    let completed = false;
+    
+    const timeout = setTimeout(() => {
+      if (!completed) {
+        completed = true;
+        reject(new Error('Roombaの自動検出がタイムアウトしました。ROOMBA_IP環境変数を設定してください。'));
+      }
+    }, 10000); // 10秒でタイムアウト
+
+    dorita980.getRobotIP((error, ip) => {
+      if (completed) return; // タイムアウト後の応答は無視
+      
+      completed = true;
+      clearTimeout(timeout);
+      
+      if (error) {
+        reject(new Error(`Roombaの自動検出に失敗しました: ${error.message}`));
+      } else {
+        console.log(`Roombaを検出しました: ${ip}`);
+        resolve(ip);
+      }
+    });
+  });
+}
+
 // メイン処理
 async function main() {
-  console.log('Roombaバッテリーチェックを開始します（クラウドAPI経由）');
+  console.log('Roombaバッテリーチェックを開始します（Local API経由）');
   
-  const robot = new dorita980.Cloud(BLID, PASSWORD);
-
+  let roombaIP;
   try {
-    // クラウド経由でRoombaに接続
-    await new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        robot.removeAllListeners();
-        reject(new Error('Roombaへの接続がタイムアウトしました（30秒）'));
-      }, 30000);
-
-      const onConnect = () => {
-        clearTimeout(timeout);
-        robot.removeListener('error', onError);
-        resolve();
-      };
-
-      const onError = (err) => {
-        clearTimeout(timeout);
-        robot.removeListener('connect', onConnect);
-        reject(err);
-      };
-
-      robot.once('connect', onConnect);
-      robot.once('error', onError);
-    });
-
-    console.log('Roombaに接続しました');
-
-    // バッテリー状態を取得
-    const state = await robot.getRobotState(['batPct', 'name']);
-    
-    const batteryLevel = state.batPct || 0;
-    const deviceName = state.name || 'Roomba';
-
-    console.log(`デバイス: ${deviceName}, バッテリー残量: ${batteryLevel}%`);
-
-    // バッテリーが100%でない場合、または強制通知フラグがONの場合はメール通知
-    if (batteryLevel < 100) {
-      console.log(`バッテリー残量が${batteryLevel}%です。メール通知を送信します`);
-      const statusMessage = 'バッテリーが100%ではないため、清掃スケジュールの実行に影響する可能性があります。\n充電を確認してください。';
-      await sendNotification(batteryLevel, deviceName, statusMessage);
-    } else if (FORCE_NOTIFICATION) {
-      console.log('強制通知フラグがONです。バッテリー残量100%ですが通知を送信します（疎通確認）');
-      const statusMessage = 'バッテリーは満充電されています。\nこのメールは疎通確認のための強制通知です。';
-      await sendNotification(batteryLevel, deviceName, statusMessage);
-    } else {
-      console.log(`バッテリー残量は${batteryLevel}%です。通知は不要です`);
-    }
-
-    await robot.end();
-    console.log('バッテリーチェック完了');
+    roombaIP = await getRoombaIP();
   } catch (error) {
-    console.error('エラーが発生しました:', error);
-    try {
-      await robot.end();
-    } catch (endError) {
-      console.error('robot.end() の実行中にエラーが発生しました:', endError);
-    }
+    console.error('エラー:', error.message);
     process.exit(1);
   }
+  
+  const robot = new dorita980.Local(BLID, PASSWORD, roombaIP);
+
+  robot.on('connect', async () => {
+    try {
+      console.log('Roomba状態を取得中...');
+      
+      // Local APIでバッテリー状態を取得
+      const state = await robot.getRobotState(['batPct', 'name']);
+      
+      const batteryLevel = state?.batPct;
+      const deviceName = state?.name ?? 'Roomba';
+      
+      // バッテリー情報が取得できない場合はエラー
+      if (batteryLevel === undefined || batteryLevel === null) {
+        throw new Error('バッテリー情報を取得できませんでした。');
+      }
+      
+      console.log(`デバイス: ${deviceName}, バッテリー残量: ${batteryLevel}%`);
+
+      // バッテリーが100%でない場合、または強制通知フラグがONの場合はメール通知
+      if (batteryLevel < 100) {
+        console.log(`バッテリー残量が${batteryLevel}%です。メール通知を送信します`);
+        const statusMessage = 'バッテリーが100%ではないため、清掃スケジュールの実行に影響する可能性があります。\n充電を確認してください。';
+        await sendNotification(batteryLevel, deviceName, statusMessage);
+      } else if (FORCE_NOTIFICATION) {
+        console.log('強制通知フラグがONです。バッテリー残量100%ですが通知を送信します（疎通確認）');
+        const statusMessage = 'バッテリーは満充電されています。\nこのメールは疎通確認のための強制通知です。';
+        await sendNotification(batteryLevel, deviceName, statusMessage);
+      } else {
+        console.log(`バッテリー残量は${batteryLevel}%です。通知は不要です`);
+      }
+
+      console.log('バッテリーチェック完了');
+      await robot.end();
+      process.exit(0);
+    } catch (error) {
+      console.error('エラーが発生しました:', error);
+      await robot.end();
+      process.exit(1);
+    }
+  });
+
+  robot.on('error', async (error) => {
+    console.error('Roomba接続エラー:', error);
+    try {
+      await robot.end();
+    } catch (e) {
+      // 接続終了時のエラーは無視
+    }
+    process.exit(1);
+  });
 }
 
 main();
