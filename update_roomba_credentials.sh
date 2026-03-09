@@ -71,10 +71,6 @@ npx --yes --package=dorita980 get-roomba-password-cloud "$EMAIL" "$PASSWORD" > "
   exit 1
 }
 
-# 出力を表示
-cat "$TEMP_OUTPUT"
-echo ""
-
 # BLID/パスワード/IPを抽出
 # 出力例:
 # BLID=> XXXXX
