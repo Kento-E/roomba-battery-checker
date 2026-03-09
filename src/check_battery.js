@@ -86,7 +86,7 @@ async function discoverEndpoints() {
   }
   const data = response.data;
   const gigya = data.gigya;
-  const deployment = data.deployments[data.current_deployment];
+  const deployment = data.deployments?.[data.current_deployment];
 
   if (!gigya || !deployment) {
     throw new Error('iRobotエンドポイントの検出に失敗しました');
@@ -125,7 +125,7 @@ async function loginGigya(endpoints) {
   }
 
   if (!body.UID || !body.UIDSignature || !body.signatureTimestamp) {
-    throw new Error(`Gigyaレスポンスに必須フィールドがありません: ${JSON.stringify(body)}`);
+    throw new Error(`Gigyaレスポンスに必須フィールドがありません: errorCode=${body.errorCode}, statusCode=${body.statusCode}, callId=${body.callId}, time=${body.time}`);
   }
 
   return {
