@@ -78,7 +78,12 @@ const IROBOT_APP_ID = 'ANDROID-C7FB240E-DF34-42D7-AE4E-A8C17079A294';
 
 // エンドポイントを検出する関数
 async function discoverEndpoints() {
-  const response = await axios.get(IROBOT_DISCOVERY_URL);
+  let response;
+  try {
+    response = await axios.get(IROBOT_DISCOVERY_URL);
+  } catch (error) {
+    throw new Error(`iRobotエンドポイントの検出に失敗しました: ${error.message}`);
+  }
   const data = response.data;
   const gigya = data.gigya;
   const deployment = data.deployments[data.current_deployment];
@@ -98,16 +103,20 @@ async function discoverEndpoints() {
 async function loginGigya(endpoints) {
   const params = new URLSearchParams({
     apiKey: endpoints.apiKey,
-    targetenv: 'mobile',
     loginID: IROBOT_USERNAME,
     password: IROBOT_PASSWORD,
     format: 'json',
     targetEnv: 'mobile',
   });
 
-  const response = await axios.post(`${endpoints.gigyaBase}/accounts.login`, params.toString(), {
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-  });
+  let response;
+  try {
+    response = await axios.post(`${endpoints.gigyaBase}/accounts.login`, params.toString(), {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    });
+  } catch (error) {
+    throw new Error(`Gigya認証リクエストに失敗しました: ${error.message}`);
+  }
 
   const body = response.data;
 
@@ -128,15 +137,20 @@ async function loginGigya(endpoints) {
 
 // iRobot Cloudにログインしてロボット情報を取得する関数
 async function loginIRobot(endpoints, gigyaCredentials) {
-  const response = await axios.post(`${endpoints.httpBase}/v2/login`, {
-    app_id: IROBOT_APP_ID,
-    assume_robot_ownership: 0,
-    gigya: {
-      signature: gigyaCredentials.uidSignature,
-      timestamp: gigyaCredentials.signatureTimestamp,
-      uid: gigyaCredentials.uid,
-    },
-  });
+  let response;
+  try {
+    response = await axios.post(`${endpoints.httpBase}/v2/login`, {
+      app_id: IROBOT_APP_ID,
+      assume_robot_ownership: 0,
+      gigya: {
+        signature: gigyaCredentials.uidSignature,
+        timestamp: gigyaCredentials.signatureTimestamp,
+        uid: gigyaCredentials.uid,
+      },
+    });
+  } catch (error) {
+    throw new Error(`iRobot Cloudへのログインに失敗しました: ${error.message}`);
+  }
 
   const body = response.data;
 
@@ -159,8 +173,11 @@ async function getBatteryLevel() {
   const robots = await loginIRobot(endpoints, gigyaCredentials);
 
   // 最初のロボットを使用
-  const robotId = Object.keys(robots)[0];
-  const robot = robots[robotId];
+  const robotIds = Object.keys(robots);
+  if (robotIds.length === 0) {
+    throw new Error('アカウントに紐づくロボットが見つかりませんでした');
+  }
+  const robot = robots[robotIds[0]];
 
   const batteryLevel = robot?.batPct;
   const deviceName = robot?.name ?? 'Roomba';
