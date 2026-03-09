@@ -51,6 +51,23 @@ GitHub ActionsのUIから手動でトリガーできます：
 3. **Run workflow** をクリック
 4. `force_notification` を `true` にすると、バッテリー残量にかかわらず通知メールが送信されます
 
+### 直接実行する場合
+
+ローカルで動作確認する場合は、必要な環境変数を設定して `npm run check-battery` を実行します：
+
+```bash
+cd /path/to/roomba-battery-checker
+npm install
+IROBOT_USERNAME=your_email@example.com \
+IROBOT_PASSWORD=yourpassword \
+SMTP_SERVER=smtp.example.com \
+SMTP_PORT=587 \
+SMTP_USER=your_email@example.com \
+SMTP_PASSWORD=yoursmtppassword \
+SEND_TO=recipient@example.com \
+npm run check-battery
+```
+
 ## トラブルシューティング
 
 ### GitHub Actions関連
