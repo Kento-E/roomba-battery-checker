@@ -54,6 +54,8 @@ echo ""
 # npxを使ってget-roomba-password-cloudを実行
 # 出力を一時ファイルに保存
 TEMP_OUTPUT=$(mktemp)
+# スクリプト終了時に一時ファイルを確実にクリーンアップ
+trap 'rm -f "$TEMP_OUTPUT"' EXIT
 npx --yes --package=dorita980 get-roomba-password-cloud "$EMAIL" "$PASSWORD" > "$TEMP_OUTPUT" 2>&1 || {
   cat "$TEMP_OUTPUT"
   rm -f "$TEMP_OUTPUT"
@@ -151,7 +153,7 @@ echo "✓ .envファイルを更新しました！"
 echo ""
 echo "更新内容:"
 echo "  ROOMBA_BLID=$BLID"
-echo "  ROOMBA_PASSWORD=$ROOMBA_PASSWORD"
+echo "  ROOMBA_PASSWORD=***（パスワードは.envファイルに保存されました）"
 if [ -n "$ROOMBA_IP" ]; then
   echo "  ROOMBA_IP=$ROOMBA_IP"
 fi

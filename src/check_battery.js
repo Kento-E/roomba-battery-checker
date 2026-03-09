@@ -344,7 +344,11 @@ async function main() {
       process.exit(0);
     } catch (error) {
       console.error('エラーが発生しました:', error);
-      await robot.end();
+      try {
+        await robot.end();
+      } catch (cleanupError) {
+        console.error('クリーンアップエラー:', cleanupError.message);
+      }
       process.exit(1);
     }
   });
