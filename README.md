@@ -102,6 +102,8 @@ cp .env.example .env
 ./run_local.sh
 ```
 
+注：この方法では、事前に`.env`ファイルの設定と`npm install`の実行が必要です。
+
 ## トラブルシューティング
 
 ### GitHub Actions関連
