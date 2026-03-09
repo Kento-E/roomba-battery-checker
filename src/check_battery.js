@@ -148,14 +148,14 @@ async function main() {
         }, timeout);
 
         function onState(data) {
-          const reported = data?.state?.reported;
-          if (reported?.name !== undefined) {
-            latestName = reported.name;
+          const reportedState = data?.state?.reported;
+          if (reportedState?.name !== undefined) {
+            latestName = reportedState.name;
           }
-          if (reported?.batPct !== undefined) {
+          if (reportedState?.batPct !== undefined) {
             clearTimeout(timer);
             robot.removeListener('state', onState);
-            resolve({ batteryLevel: reported.batPct, deviceName: latestName });
+            resolve({ batteryLevel: reportedState.batPct, deviceName: latestName });
           }
         }
 
