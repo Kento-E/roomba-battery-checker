@@ -1,0 +1,62 @@
+name: Auto Merge on Approval
+
+on:
+  pull_request_review:
+    types: [submitted]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-merge:
+    runs-on: ubuntu-latest
+    if: >
+      github.event.review.state == 'approved' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    
+    steps:
+      - name: PR情報を表示
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BASE: ${{ github.event.pull_request.base.ref }}
+          PR_HEAD: ${{ github.event.pull_request.head.ref }}
+          REVIEWER: ${{ github.event.review.user.login }}
+        run: |
+          printf 'PR #%s: %s\n' "${PR_NUMBER}" "${PR_TITLE}"
+          printf 'Base: %s\n' "${PR_BASE}"
+          printf 'Head: %s\n' "${PR_HEAD}"
+          printf 'Reviewer: %s\n' "${REVIEWER}"
+
+      - name: 自動マージを実行
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          printf 'PR #%s が承認されました。自動マージを開始します...\n' "${PR_NUMBER}"
+          
+          # PRがDraftかどうかをチェック
+          IS_DRAFT=$(gh pr view "${PR_NUMBER}" --repo ${{ github.repository }} --json isDraft --jq '.isDraft')
+          
+          if [ "$IS_DRAFT" = "true" ]; then
+            echo "⚠️ このPRはDraft状態です。Draft状態のPRは自動マージされません。"
+            echo "Ready for reviewに変更してから再度Approveしてください。"
+            exit 0
+          fi
+          
+          # PRのマージ可能状態を確認
+          echo "📋 PR状態を確認中..."
+          gh pr view "${PR_NUMBER}" --repo ${{ github.repository }} --json mergeable,mergeStateStatus --jq '.mergeable,.mergeStateStatus'
+          
+          # 自動マージを有効化（スカッシュマージ、ブランチ削除）
+          echo "🔄 自動マージを設定中..."
+          gh pr merge "${PR_NUMBER}" --repo ${{ github.repository }} --squash --auto --delete-branch
+          
+          printf '✅ PR #%s の自動マージが有効化されました\n' "${PR_NUMBER}"
+          echo ""
+          echo "📝 次のステップ:"
+          echo "  1. ブランチ保護ルールで要求される承認を取得"
+          echo "  2. すべてのステータスチェックが成功"
+          echo "  3. → 自動的にSquash and Mergeが実行されます"
+          echo "  4. マージ後、ブランチが自動削除されます"
