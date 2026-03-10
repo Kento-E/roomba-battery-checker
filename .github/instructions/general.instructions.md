@@ -39,6 +39,20 @@
 - **重要**: `Fixes #<issue番号>` は PR がマージされる「前」に PR 本文に記載すること
   - PR がマージされた「後」に本文を編集しても自動クローズは発動しない
 
+## このリポジトリにおける自動クローズの仕組み
+
+- **根本原因（PR #31 で特定・修正済み）**: `auto-merge.yml` の GITHUB_TOKEN に `issues: write` 権限がなかったため、GitHubのネイティブ自動クローズが機能しなかった
+  - `gh pr merge --auto` でauto-mergeを設定する際、このトークンコンテキストが保存される
+  - GitHubがauto-mergeを実行してPR本文のクローズキーワードを処理する際、`issues: write` がないためイシューのクローズに失敗していた
+
+- **対策（PR #31で実施済み）**:
+  1. `auto-merge.yml` に `issues: write` を追加
+  2. `close-issue-on-merge.yml` ワークフローを新規追加（確実なフォールバック）
+     - PRがmainにマージされた際に自動実行
+     - PR本文の `Fixes #N` および `Fixes owner/repo#N` 形式を両方処理してイシューをクローズ
+
+- **注意**: `report_progress` ツールは PR 説明文の末尾に `- Fixes Kento-E/roomba-battery-checker#N` を自動付加する。`close-issue-on-merge.yml` はこの形式も処理するため、自動クローズは確実に動作する
+
 ## PR 説明文の更新
 
 - **PR 説明文を更新する際は、既存の HTML コメントを必ず保持すること**
