@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 📚 ドキュメント
+    url: https://github.com/Kento-E/roomba-battery-checker/blob/main/README.md
+    about: プロジェクトのドキュメントを確認する
+  - name: 💬 ディスカッション
+    url: https://github.com/Kento-E/roomba-battery-checker/discussions
+    about: コミュニティでの質問や議論
