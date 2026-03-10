@@ -104,16 +104,22 @@ function getSigningKey(secretKey, dateStamp, regionName, serviceName) {
 
 // AWS SigV4 署名付き GET リクエスト
 async function awsSignedGet(host, path, credentials, region, service) {
-  const { AccessKeyId, SecretKey, SessionToken } = credentials;
+  const accessKeyId = credentials?.AccessKeyId ?? credentials?.accessKeyId;
+  const secretKey = credentials?.SecretKey ?? credentials?.SecretAccessKey;
+  const sessionToken = credentials?.SessionToken ?? credentials?.Token;
+  if (!accessKeyId || !secretKey) {
+    throw new Error('awsSignedGet: credentials missing required fields (AccessKeyId / SecretKey)');
+  }
 
   const now = new Date();
   const amzdate =
     now.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, '').slice(0, 15) + 'Z';
   const datestamp = amzdate.slice(0, 8);
 
-  const canonicalHeaders =
-    `host:${host}\nx-amz-date:${amzdate}\nx-amz-security-token:${SessionToken}\n`;
-  const signedHeaders = 'host;x-amz-date;x-amz-security-token';
+  const headerParts = [`host:${host}`, `x-amz-date:${amzdate}`];
+  if (sessionToken) headerParts.push(`x-amz-security-token:${sessionToken}`);
+  const canonicalHeaders = headerParts.join('\n') + '\n';
+  const signedHeaders = headerParts.map((h) => h.split(':')[0]).join(';');
   const payloadHash = crypto.createHash('sha256').update('').digest('hex');
   const canonicalRequest =
     `GET\n${path}\n\n${canonicalHeaders}\n${signedHeaders}\n${payloadHash}`;
@@ -124,20 +130,17 @@ async function awsSignedGet(host, path, credentials, region, service) {
     `${algorithm}\n${amzdate}\n${credentialScope}\n` +
     crypto.createHash('sha256').update(canonicalRequest).digest('hex');
 
-  const signingKey = getSigningKey(SecretKey, datestamp, region, service);
+  const signingKey = getSigningKey(secretKey, datestamp, region, service);
   const signature = crypto.createHmac('sha256', signingKey).update(stringToSign).digest('hex');
 
   const authorizationHeader =
-    `${algorithm} Credential=${AccessKeyId}/${credentialScope}, ` +
+    `${algorithm} Credential=${accessKeyId}/${credentialScope}, ` +
     `SignedHeaders=${signedHeaders}, Signature=${signature}`;
 
-  return axios.get(`https://${host}${path}`, {
-    headers: {
-      'x-amz-security-token': SessionToken,
-      'x-amz-date': amzdate,
-      Authorization: authorizationHeader,
-    },
-  });
+  const requestHeaders = { 'x-amz-date': amzdate, Authorization: authorizationHeader };
+  if (sessionToken) requestHeaders['x-amz-security-token'] = sessionToken;
+
+  return axios.get(`https://${host}${path}`, { headers: requestHeaders });
 }
 
 // エンドポイントを検出する関数
