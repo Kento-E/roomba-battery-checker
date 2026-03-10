@@ -121,7 +121,12 @@ async function loginGigya(endpoints) {
   const body = response.data;
 
   if (body.errorCode !== 0) {
-    throw new Error(`Gigya認証エラー: ${body.errorMessage || JSON.stringify(body)}`);
+    throw new Error(
+      `Gigya認証エラー: ${
+        body.errorMessage
+          || `errorCode=${body.errorCode}, statusCode=${body.statusCode}, callId=${body.callId}, time=${body.time}`
+      }`
+    );
   }
 
   if (!body.UID || !body.UIDSignature || !body.signatureTimestamp) {
