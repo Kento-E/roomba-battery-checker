@@ -101,7 +101,9 @@ async function discoverEndpoints() {
     throw new Error(`iRobotエンドポイントの検出に失敗しました: ${error.message}`);
   }
   const data = response.data;
-  debugLog('エンドポイント検出レスポンス:', JSON.stringify(data, null, 2));
+  if (DEBUG_LOG) {
+    debugLog('エンドポイント検出レスポンス:', JSON.stringify(data, null, 2));
+  }
   const gigya = data.gigya;
   const deployment = data.deployments?.[data.current_deployment];
 
@@ -136,12 +138,14 @@ async function loginGigya(endpoints) {
   }
 
   const body = response.data;
-  // UIDSignature・signatureTimestamp・sessionInfo は認証署名・セッショントークンのためマスク
-  const safeGigyaBody = { ...body };
-  if (safeGigyaBody.UIDSignature !== undefined) safeGigyaBody.UIDSignature = '***';
-  if (safeGigyaBody.signatureTimestamp !== undefined) safeGigyaBody.signatureTimestamp = '***';
-  if (safeGigyaBody.sessionInfo !== undefined) safeGigyaBody.sessionInfo = '***';
-  debugLog('Gigyaログインレスポンス:', JSON.stringify(safeGigyaBody, null, 2));
+  if (DEBUG_LOG) {
+    // UIDSignature・signatureTimestamp・sessionInfo は認証署名・セッショントークンのためマスク
+    const safeGigyaBody = { ...body };
+    if (safeGigyaBody.UIDSignature !== undefined) safeGigyaBody.UIDSignature = '***';
+    if (safeGigyaBody.signatureTimestamp !== undefined) safeGigyaBody.signatureTimestamp = '***';
+    if (safeGigyaBody.sessionInfo !== undefined) safeGigyaBody.sessionInfo = '***';
+    debugLog('Gigyaログインレスポンス:', JSON.stringify(safeGigyaBody, null, 2));
+  }
 
   if (body.errorCode !== 0) {
     throw new Error(
@@ -181,12 +185,14 @@ async function loginIRobot(endpoints, gigyaCredentials) {
   }
 
   const body = response.data;
-  // password はMQTT認証パスワードのためマスク
-  const safeRobots = {};
-  for (const [id, r] of Object.entries(body.robots || {})) {
-    safeRobots[id] = maskPassword(r);
+  if (DEBUG_LOG) {
+    // password はMQTT認証パスワードのためマスク
+    const safeRobots = {};
+    for (const [id, r] of Object.entries(body.robots || {})) {
+      safeRobots[id] = maskPassword(r);
+    }
+    debugLog('iRobot Cloudログインレスポンス robots:', JSON.stringify(safeRobots, null, 2));
   }
-  debugLog('iRobot Cloudログインレスポンス robots:', JSON.stringify(safeRobots, null, 2));
 
   if (!body.robots || Object.keys(body.robots).length === 0) {
     throw new Error('アカウントに紐づくロボットが見つかりませんでした');
@@ -212,8 +218,10 @@ async function getBatteryLevel() {
     throw new Error('アカウントに紐づくロボットが見つかりませんでした');
   }
   const robot = robots[robotIds[0]];
-  // password はMQTT認証パスワードのためマスク
-  debugLog('ロボットデータ:', JSON.stringify(maskPassword(robot), null, 2));
+  if (DEBUG_LOG) {
+    // password はMQTT認証パスワードのためマスク
+    debugLog('ロボットデータ:', JSON.stringify(maskPassword(robot), null, 2));
+  }
 
   const batteryLevel = robot?.batPct;
   const deviceName = robot?.name ?? 'Roomba';
