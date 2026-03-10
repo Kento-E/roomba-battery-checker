@@ -1,0 +1,72 @@
+name: Bug Report
+description: バグレポートを作成
+title: "[Bug]: "
+labels: ["bug"]
+assignees: ["copilot"]
+body:
+  - type: markdown
+    attributes:
+      value: バグレポートをご提出いただきありがとうございます。
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: 何が起きましたか？
+      description: バグの内容を詳しく教えてください。
+      placeholder: バグの詳細をここに記載してください。
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期待される動作
+      description: どのような動作を期待していましたか？
+      placeholder: 期待される動作をここに記載してください。
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 再現手順
+      description: バグを再現するための手順を教えてください。
+      placeholder: |
+        1. '...' に移動
+        2. '...' をクリック
+        3. '...' まで下にスクロール
+        4. エラーを確認
+    validations:
+      required: false
+  - type: textarea
+    id: environment
+    attributes:
+      label: 実行環境
+      description: 使用しているNode.jsバージョンやOS情報を記載してください。
+      placeholder: |
+        - Node.js: x.x.x
+        - OS: Windows/Mac/Linux
+        - GitHub Actions: 使用している場合はワークフロー名
+    validations:
+      required: false
+  - type: textarea
+    id: logs
+    attributes:
+      label: 関連ログ
+      description: 関連するログやエラーメッセージがあれば貼り付けてください。
+      render: shell
+    validations:
+      required: false
+  - type: textarea
+    id: fix-proposal
+    attributes:
+      label: 修正案
+      description: この問題に対する修正案がある場合は記載してください。
+      placeholder: 提案する修正内容をここに記載してください。
+    validations:
+      required: false
+  - type: textarea
+    id: copilot-request
+    attributes:
+      label: GitHub Copilotへの質問（任意）
+      placeholder: "@copilot この問題を修正し、Pull Requestを作成してください"
+      value: "@copilot この問題を修正し、Pull Requestを作成してください"
+    validations:
+      required: false
