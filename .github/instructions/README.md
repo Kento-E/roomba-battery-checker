@@ -6,7 +6,8 @@
 
 - `general.instructions.md` - プロジェクト全体に適用される全般的な指示（言語設定など）
 - `markdown.instructions.md` - Markdown ファイルの生成・編集時のスタイル指示
-- `coding.instructions.md` - コーディング時の指示（エラーハンドリング、コード品質など）
+- `coding.instructions.md` - コーディング時の指示（エラーハンドリング、コード品質、実装基本フローなど）
+- `review.instructions.md` - セルフレビュー・セルフ修正フローの指示（レビュー観点、妥当性評価基準など）
 - `documentation.instructions.md` - ドキュメント作成時の指示（責任分掌、DRY原則など）
 - `workflow.instructions.md` - GitHub Actions ワークフロー作成・編集時の指示
 
