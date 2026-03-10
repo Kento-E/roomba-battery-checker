@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const axios = require('axios');
 const nodemailer = require('nodemailer');
 
@@ -92,6 +93,53 @@ const IROBOT_DISCOVERY_URL =
   'https://disc-prod.iot.irobotapi.com/v1/discover/endpoints?country_code=US';
 const IROBOT_APP_ID = 'ANDROID-C7FB240E-DF34-42D7-AE4E-A8C17079A294';
 
+// AWS SigV4 署名キー生成
+function getSigningKey(secretKey, dateStamp, regionName, serviceName) {
+  const kDate = crypto.createHmac('sha256', 'AWS4' + secretKey).update(dateStamp).digest();
+  const kRegion = crypto.createHmac('sha256', kDate).update(regionName).digest();
+  const kService = crypto.createHmac('sha256', kRegion).update(serviceName).digest();
+  const kSigning = crypto.createHmac('sha256', kService).update('aws4_request').digest();
+  return kSigning;
+}
+
+// AWS SigV4 署名付き GET リクエスト
+async function awsSignedGet(host, path, credentials, region, service) {
+  const { AccessKeyId, SecretKey, SessionToken } = credentials;
+
+  const now = new Date();
+  const amzdate =
+    now.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, '').slice(0, 15) + 'Z';
+  const datestamp = amzdate.slice(0, 8);
+
+  const canonicalHeaders =
+    `host:${host}\nx-amz-date:${amzdate}\nx-amz-security-token:${SessionToken}\n`;
+  const signedHeaders = 'host;x-amz-date;x-amz-security-token';
+  const payloadHash = crypto.createHash('sha256').update('').digest('hex');
+  const canonicalRequest =
+    `GET\n${path}\n\n${canonicalHeaders}\n${signedHeaders}\n${payloadHash}`;
+
+  const algorithm = 'AWS4-HMAC-SHA256';
+  const credentialScope = `${datestamp}/${region}/${service}/aws4_request`;
+  const stringToSign =
+    `${algorithm}\n${amzdate}\n${credentialScope}\n` +
+    crypto.createHash('sha256').update(canonicalRequest).digest('hex');
+
+  const signingKey = getSigningKey(SecretKey, datestamp, region, service);
+  const signature = crypto.createHmac('sha256', signingKey).update(stringToSign).digest('hex');
+
+  const authorizationHeader =
+    `${algorithm} Credential=${AccessKeyId}/${credentialScope}, ` +
+    `SignedHeaders=${signedHeaders}, Signature=${signature}`;
+
+  return axios.get(`https://${host}${path}`, {
+    headers: {
+      'x-amz-security-token': SessionToken,
+      'x-amz-date': amzdate,
+      Authorization: authorizationHeader,
+    },
+  });
+}
+
 // エンドポイントを検出する関数
 async function discoverEndpoints() {
   let response;
@@ -115,6 +163,9 @@ async function discoverEndpoints() {
     apiKey: gigya.api_key,
     gigyaBase: `https://accounts.${gigya.datacenter_domain}`,
     httpBase: deployment.httpBase,
+    // mqttAts は ATS 対応 IoT エンドポイント。旧形式の deployment では mqtt フィールドにフォールバック
+    mqttAts: deployment.mqttAts ?? deployment.mqtt,
+    awsRegion: deployment.awsRegion,
   };
 }
 
@@ -167,7 +218,7 @@ async function loginGigya(endpoints) {
   };
 }
 
-// iRobot Cloudにログインしてロボット情報を取得する関数
+// iRobot Cloudにログインしてロボット情報とAWS認証情報を取得する関数
 async function loginIRobot(endpoints, gigyaCredentials) {
   let response;
   try {
@@ -192,13 +243,43 @@ async function loginIRobot(endpoints, gigyaCredentials) {
       safeRobots[id] = maskPassword(r);
     }
     debugLog('iRobot Cloudログインレスポンス robots:', JSON.stringify(safeRobots, null, 2));
+    debugLog(
+      'iRobot CloudログインレスポンスにAWS credentialsが含まれているか:',
+      body.credentials != null ? 'あり' : 'なし'
+    );
   }
 
   if (!body.robots || Object.keys(body.robots).length === 0) {
     throw new Error('アカウントに紐づくロボットが見つかりませんでした');
   }
 
-  return body.robots;
+  return { robots: body.robots, credentials: body.credentials ?? null };
+}
+
+// AWS IoT Device Shadow からロボット状態を取得する関数
+async function getDeviceShadow(endpoints, robotId, credentials) {
+  if (!endpoints.mqttAts || !endpoints.awsRegion) {
+    throw new Error('IoTエンドポイントまたはAWSリージョン情報がありません');
+  }
+
+  let response;
+  try {
+    response = await awsSignedGet(
+      endpoints.mqttAts,
+      `/things/${robotId}/shadow`,
+      credentials,
+      endpoints.awsRegion,
+      'iotdata'
+    );
+  } catch (error) {
+    throw new Error(`Device Shadowの取得に失敗しました: ${error.message}`);
+  }
+
+  if (DEBUG_LOG) {
+    debugLog('Device Shadowレスポンス:', JSON.stringify(response.data, null, 2));
+  }
+
+  return response.data;
 }
 
 // Cloud APIからバッテリー残量とデバイス名を取得する関数
@@ -210,21 +291,33 @@ async function getBatteryLevel() {
   const gigyaCredentials = await loginGigya(endpoints);
 
   console.log('ロボット情報を取得中...');
-  const robots = await loginIRobot(endpoints, gigyaCredentials);
+  const { robots, credentials } = await loginIRobot(endpoints, gigyaCredentials);
 
   // 最初のロボットを使用
   const robotIds = Object.keys(robots);
   if (robotIds.length === 0) {
     throw new Error('アカウントに紐づくロボットが見つかりませんでした');
   }
-  const robot = robots[robotIds[0]];
+  const robotId = robotIds[0];
+  const robot = robots[robotId];
   if (DEBUG_LOG) {
     // password はMQTT認証パスワードのためマスク
     debugLog('ロボットデータ:', JSON.stringify(maskPassword(robot), null, 2));
   }
 
-  const batteryLevel = robot?.batPct;
+  let batteryLevel = robot?.batPct;
   const deviceName = robot?.name ?? 'Roomba';
+
+  // ログインレスポンスに batPct がない場合、AWS IoT Device Shadow から取得
+  if (batteryLevel == null && credentials) {
+    console.log('Device Shadow経由でバッテリー残量を取得中...');
+    try {
+      const shadow = await getDeviceShadow(endpoints, robotId, credentials);
+      batteryLevel = shadow?.state?.reported?.batPct;
+    } catch (error) {
+      console.warn(`Device Shadow取得に失敗しました: ${error.message}`);
+    }
+  }
 
   if (batteryLevel === undefined || batteryLevel === null) {
     console.warn(
