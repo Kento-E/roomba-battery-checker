@@ -1,13 +1,9 @@
-// .envファイルから環境変数を読み込み
-require('dotenv').config();
-
-const dorita980 = require('dorita980');
+const axios = require('axios');
 const nodemailer = require('nodemailer');
 
 // 環境変数から設定を読み込み
-const BLID = process.env.ROOMBA_BLID;
-const PASSWORD = process.env.ROOMBA_PASSWORD;
-const ROOMBA_IP = process.env.ROOMBA_IP;
+const IROBOT_USERNAME = process.env.IROBOT_USERNAME;
+const IROBOT_PASSWORD = process.env.IROBOT_PASSWORD;
 const SMTP_SERVER = process.env.SMTP_SERVER;
 const SMTP_PORT = process.env.SMTP_PORT || '587';
 const SMTP_USER = process.env.SMTP_USER;
@@ -17,20 +13,9 @@ const SEND_TO = process.env.SEND_TO;
 const FORCE_NOTIFICATION = process.env.FORCE_NOTIFICATION === 'true';
 
 // 環境変数のチェック
-if (!BLID || !PASSWORD) {
-  console.error('エラー: ROOMBA_BLIDまたはROOMBA_PASSWORDが設定されていません');
+if (!IROBOT_USERNAME || !IROBOT_PASSWORD) {
+  console.error('エラー: IROBOT_USERNAMEまたはIROBOT_PASSWORDが設定されていません');
   process.exit(1);
-}
-
-// IPアドレスの形式チェック（指定されている場合のみ）
-if (ROOMBA_IP && ROOMBA_IP.trim() !== '') {
-  // 各オクテットが0-255の範囲内にあることを検証
-  const octet = '(25[0-5]|2[0-4]\\d|1?\\d?\\d)';
-  const ipPattern = new RegExp(`^${octet}\\.${octet}\\.${octet}\\.${octet}$`);
-  if (!ipPattern.test(ROOMBA_IP.trim())) {
-    console.error('エラー: ROOMBA_IPの形式が不正です。正しいIPアドレス（例: 192.168.1.100）を指定してください');
-    process.exit(1);
-  }
 }
 
 if (!SMTP_SERVER || !SMTP_USER || !SMTP_PASSWORD || !SEND_TO) {
@@ -56,8 +41,8 @@ async function sendNotification(batteryLevel, deviceName, statusMessage) {
     secure: SMTP_PORT_NUMBER === 465,
     auth: {
       user: SMTP_USER,
-      pass: SMTP_PASSWORD
-    }
+      pass: SMTP_PASSWORD,
+    },
   });
 
   const bodyMessage = `${deviceName}のバッテリー状態をお知らせします。
@@ -74,7 +59,7 @@ ${statusMessage}`;
     text: `${bodyMessage}
 
 ---
-このメールは自動送信されています。`
+このメールは自動送信されています。`,
   };
 
   try {
@@ -86,272 +71,166 @@ ${statusMessage}`;
   }
 }
 
-// Roomba IPアドレスを取得する関数（自動検出または手動指定）
-async function getRoombaIP() {
-  // 空文字列や空白のみの値は「未設定」とみなし、自動検出にフォールバックする
-  if (ROOMBA_IP && ROOMBA_IP.trim() !== '') {
-    console.log(`指定されたIPアドレスを使用: ${ROOMBA_IP.trim()}`);
-    return ROOMBA_IP.trim();
+// iRobot Cloud API 定数
+const IROBOT_DISCOVERY_URL =
+  'https://disc-prod.iot.irobotapi.com/v1/discover/endpoints?country_code=US';
+const IROBOT_APP_ID = 'ANDROID-C7FB240E-DF34-42D7-AE4E-A8C17079A294';
+
+// エンドポイントを検出する関数
+async function discoverEndpoints() {
+  let response;
+  try {
+    response = await axios.get(IROBOT_DISCOVERY_URL);
+  } catch (error) {
+    throw new Error(`iRobotエンドポイントの検出に失敗しました: ${error.message}`);
+  }
+  const data = response.data;
+  const gigya = data.gigya;
+  const deployment = data.deployments?.[data.current_deployment];
+
+  if (!gigya || !deployment) {
+    throw new Error('iRobotエンドポイントの検出に失敗しました');
   }
 
-  console.log('Roombaを自動検出中...');
-  return new Promise((resolve, reject) => {
-    let completed = false;
-    
-    const timeout = setTimeout(() => {
-      if (!completed) {
-        completed = true;
-        reject(new Error('Roombaの自動検出がタイムアウトしました。ROOMBA_IP環境変数を設定してください。'));
-      }
-    }, 10000); // 10秒でタイムアウト
+  return {
+    apiKey: gigya.api_key,
+    gigyaBase: `https://accounts.${gigya.datacenter_domain}`,
+    httpBase: deployment.httpBase,
+  };
+}
 
-    dorita980.getRobotIP((error, ip) => {
-      if (completed) return; // タイムアウト後の応答は無視
-      
-      completed = true;
-      clearTimeout(timeout);
-      
-      if (error) {
-        reject(new Error(`Roombaの自動検出に失敗しました: ${error.message}`));
-      } else {
-        console.log(`Roombaを検出しました: ${ip}`);
-        resolve(ip);
-      }
-    });
+// GigyaにログインしてiRobot認証情報を取得する関数
+async function loginGigya(endpoints) {
+  const params = new URLSearchParams({
+    apiKey: endpoints.apiKey,
+    loginID: IROBOT_USERNAME,
+    password: IROBOT_PASSWORD,
+    format: 'json',
+    targetEnv: 'mobile',
   });
+
+  let response;
+  try {
+    response = await axios.post(`${endpoints.gigyaBase}/accounts.login`, params.toString(), {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    });
+  } catch (error) {
+    throw new Error(`Gigya認証リクエストに失敗しました: ${error.message}`);
+  }
+
+  const body = response.data;
+
+  if (body.errorCode !== 0) {
+    throw new Error(
+      `Gigya認証エラー: ${
+        body.errorMessage
+          || `errorCode=${body.errorCode}, statusCode=${body.statusCode}, callId=${body.callId}, time=${body.time}`
+      }`
+    );
+  }
+
+  if (!body.UID || !body.UIDSignature || !body.signatureTimestamp) {
+    throw new Error(`Gigyaレスポンスに必須フィールドがありません: errorCode=${body.errorCode}, statusCode=${body.statusCode}, callId=${body.callId}, time=${body.time}`);
+  }
+
+  return {
+    uid: body.UID,
+    uidSignature: body.UIDSignature,
+    signatureTimestamp: body.signatureTimestamp,
+  };
+}
+
+// iRobot Cloudにログインしてロボット情報を取得する関数
+async function loginIRobot(endpoints, gigyaCredentials) {
+  let response;
+  try {
+    response = await axios.post(`${endpoints.httpBase}/v2/login`, {
+      app_id: IROBOT_APP_ID,
+      assume_robot_ownership: 0,
+      gigya: {
+        signature: gigyaCredentials.uidSignature,
+        timestamp: gigyaCredentials.signatureTimestamp,
+        uid: gigyaCredentials.uid,
+      },
+    });
+  } catch (error) {
+    throw new Error(`iRobot Cloudへのログインに失敗しました: ${error.message}`);
+  }
+
+  const body = response.data;
+
+  if (!body.robots || Object.keys(body.robots).length === 0) {
+    throw new Error('アカウントに紐づくロボットが見つかりませんでした');
+  }
+
+  return body.robots;
+}
+
+// Cloud APIからバッテリー残量とデバイス名を取得する関数
+async function getBatteryLevel() {
+  console.log('iRobot Cloudエンドポイントを検出中...');
+  const endpoints = await discoverEndpoints();
+
+  console.log('iRobotアカウントにログイン中...');
+  const gigyaCredentials = await loginGigya(endpoints);
+
+  console.log('ロボット情報を取得中...');
+  const robots = await loginIRobot(endpoints, gigyaCredentials);
+
+  // 最初のロボットを使用
+  const robotIds = Object.keys(robots);
+  if (robotIds.length === 0) {
+    throw new Error('アカウントに紐づくロボットが見つかりませんでした');
+  }
+  const robot = robots[robotIds[0]];
+
+  const batteryLevel = robot?.batPct;
+  const deviceName = robot?.name ?? 'Roomba';
+
+  if (batteryLevel === undefined || batteryLevel === null) {
+    throw new Error(
+      'バッテリー情報を取得できませんでした。ロボットがオフラインの可能性があります。'
+    );
+  }
+
+  return { batteryLevel, deviceName };
 }
 
 // メイン処理
 async function main() {
-  console.log('Roombaバッテリーチェックを開始します（Local API経由）');
-  
-  let roombaIP;
+  console.log('Roombaバッテリーチェックを開始します（Cloud API経由）');
+
+  let batteryLevel, deviceName;
   try {
-    roombaIP = await getRoombaIP();
+    ({ batteryLevel, deviceName } = await getBatteryLevel());
   } catch (error) {
     console.error('エラー:', error.message);
     process.exit(1);
   }
-  
-  console.log(`\nRoombaへの接続を開始します...`);
-  console.log(`  BLID: ${BLID}`);
-  console.log(`  IP: ${roombaIP}`);
-  console.log(`  PASSWORD: ${PASSWORD ? '(設定済み)' : '(未設定)'}`);
-  console.log(`\n診断情報:`);
-  console.log(`  - BLID長: ${BLID.length}文字`);
-  console.log(`  - PASSWORD長: ${PASSWORD.length}文字`);
-  console.log(`  - RoombaアプリでROOMBA_IPアドレス(${roombaIP})に接続できることを確認してください`);
-  
-  // デバッグ: 接続オプションを表示
-  console.log(`\ndorita980接続オプション:`);
-  console.log(`  - TLS: 有効（Roomba 900シリーズ以降はデフォルト）`);
-  console.log(`  - ポート: 8883 (TLS)`);
-  
-  const robot = new dorita980.Local(BLID, PASSWORD, roombaIP);
-  
-  console.log('\n✓ dorita980.Localインスタンスを作成しました');
-  console.log('MQTT接続を待機中...');
-  console.log('\n重要: 接続が即座に失敗する場合、以下を確認してください:');
-  console.log('  1. 【最重要】スマートフォンのiRobot/Roombaホームアプリを完全に終了してください');
-  console.log('     （アプリが開いているとMQTT接続がロックアウトされます）');
-  console.log('  2. BLIDとパスワードが正しいこと（update_roomba_credentials.shで最新の情報を取得）');
-  console.log('  3. RoombaがWi-Fiに接続されていること（Roombaアプリで確認）');
-  console.log('  4. Roombaがドック中の場合、CLEANボタンを押して起動中に接続してください');
 
-  // 接続タイムアウト（60秒）
-  const connectTimeout = setTimeout(async () => {
-    console.error('\n✗ エラー: Roombaへの接続がタイムアウトしました（60秒）');
-    console.error('考えられる原因:');
-    console.error('  1. RoombaがWi-Fiネットワークに接続されていない');
-    console.error('  2. IPアドレスが正しくない');
-    console.error('  3. BLIDまたはパスワードが正しくない');
-    console.error('  4. Roombaのファームウェアが対応していない');
-    try {
-      await robot.end();
-    } catch (e) {
-      // 接続終了時のエラーは無視
+  console.log(`デバイス: ${deviceName}, バッテリー残量: ${batteryLevel}%`);
+
+  // バッテリーが100%でない場合、または強制通知フラグがONの場合はメール通知
+  try {
+    if (batteryLevel < 100) {
+      console.log(`バッテリー残量が${batteryLevel}%です。メール通知を送信します`);
+      const statusMessage =
+        'バッテリーが100%ではないため、清掃スケジュールの実行に影響する可能性があります。\n充電を確認してください。';
+      await sendNotification(batteryLevel, deviceName, statusMessage);
+    } else if (FORCE_NOTIFICATION) {
+      console.log('強制通知フラグがONです。バッテリー残量100%ですが通知を送信します（疎通確認）');
+      const statusMessage =
+        'バッテリーは満充電されています。\nこのメールは疎通確認のための強制通知です。';
+      await sendNotification(batteryLevel, deviceName, statusMessage);
+    } else {
+      console.log(`バッテリー残量は${batteryLevel}%です。通知は不要です`);
     }
+  } catch (error) {
+    console.error('エラーが発生しました:', error);
     process.exit(1);
-  }, 60000);
+  }
 
-  // エラーイベントのリスナー
-  robot.on('error', async (error) => {
-    clearTimeout(connectTimeout);
-    console.error('\n✗ Roomba接続エラー:', error.message);
-    console.error('詳細:', error);
-    try {
-      await robot.end();
-    } catch (e) {
-      // 接続終了時のエラーは無視
-    }
-    process.exit(1);
-  });
-
-  // オフラインイベントのリスナー
-  let offlineHandled = false;
-  robot.on('offline', async () => {
-    if (offlineHandled) return;
-    offlineHandled = true;
-    clearTimeout(connectTimeout);
-    console.error('\n✗ エラー: Roombaがオフラインになりました（MQTT接続が即座に切断されました）');
-    console.error('\n考えられる原因（可能性の高い順）:');
-    console.error('  1. 【最も見落とされがち】iRobot/Roombaホームアプリが開いている、または最近接続した');
-    console.error('     → スマートフォンのアプリを完全に終了してください（バックグラウンドからも削除）');
-    console.error('     → アプリを終了後、数分待ってから再実行してください');
-    console.error('  2. BLIDまたはパスワードが間違っている（または古い）');
-    console.error('     → ./update_roomba_credentials.sh を再実行して最新の認証情報を取得してください');
-    console.error('  3. Roombaがドック中でスリープモードになっている');
-    console.error('     → Roomba本体のCLEANボタンを押して起動中に接続を試みてください');
-    console.error('  4. RoombaがWi-Fiネットワークから切断されている');
-    console.error('     → Roombaアプリで接続状態を確認してください');
-    console.error('  5. 【dorita980との互換性問題】Roombaのファームウェアバージョンが対応していない');
-    console.error('     → https://github.com/koalazak/dorita980 で対応機種を確認してください');
-    console.error('\n対処方法（この順番で試してください）:');
-    console.error('  1. 【重要】スマートフォンのiRobot/Roombaホームアプリを完全に終了してください');
-    console.error('  2. Roomba本体のCLEANボタンを押して、Roombaが起動中であることを確認してください');
-    console.error('  3. ./update_roomba_credentials.sh でBLIDとパスワードを再取得してください');
-    console.error('  4. 上記を実施後、数分待ってから ./run_local.sh を再実行してください');
-    try {
-      await robot.end();
-    } catch (e) {
-      // 接続終了時のエラーは無視
-    }
-    process.exit(1);
-  });
-
-  // クローズイベントのリスナー
-  let closeHandled = false;
-  robot.on('close', () => {
-    if (closeHandled || offlineHandled) return; // offlineで既に処理済みの場合はスキップ
-    closeHandled = true;
-    clearTimeout(connectTimeout);
-    console.error('\n✗ エラー: Roomba接続が切断されました');
-    console.error('\n考えられる原因:');
-    console.error('  1. ネットワーク接続の問題');
-    console.error('  2. 認証エラー（BLIDまたはパスワードが正しくない）');
-    console.error('  3. Roombaが応答しなくなった');
-    console.error('\n対処方法:');
-    console.error('  - ./update_roomba_credentials.sh でBLIDとパスワードを再取得してください');
-    // 接続は既に閉じているため、robot.end()は不要
-    process.exit(1);
-  });
-
-  robot.on('connect', async () => {
-    try {
-      clearTimeout(connectTimeout); // 接続タイムアウトをクリア
-      console.log('\n✓✓ Roomba接続成功！');
-      console.log('Roomba状態を取得中...');
-      console.log('デバッグ: MQTT接続が確立されました。状態更新を待機しています...');
-      
-      // MQTTメッセージを受信してバッテリー状態を取得
-      // on('state')イベントでリアルタイムに状態を監視
-      const batteryInfo = await new Promise((resolve, reject) => {
-        let batteryLevel = null;
-        let deviceName = 'Roomba';
-        let timeoutId;
-        let resolved = false; // Promiseが解決済みかを追跡
-        let stateUpdateCount = 0; // 受信した状態更新の回数
-        let fullStateReceived = false; // 完全な状態を一度だけログ出力
-        
-        const stateHandler = (state) => {
-          if (resolved) return; // 既に解決済みの場合は何もしない
-          
-          stateUpdateCount++;
-          console.log(`\n===== 状態更新 #${stateUpdateCount} =====`);
-          console.log('受信フィールド:', Object.keys(state).join(', '));
-          
-          // 完全な状態を一度だけJSON形式でログ出力（デバッグ用）
-          // 注: capフィールドのみの初期状態（通常1-3フィールド）をスキップし、
-          // より多くの情報を含む状態更新（通常5+フィールド）を表示
-          if (!fullStateReceived && Object.keys(state).length > 5) {
-            fullStateReceived = true;
-            console.log('\n【完全な状態オブジェクト（JSON形式）】:');
-            console.log(JSON.stringify(state, null, 2));
-            console.log('【完全な状態オブジェクト（終了）】\n');
-          }
-          
-          // デバッグ用：受信した状態の一部を詳細表示
-          if (state.batPct != null) {
-            console.log('✓ batPct:', state.batPct);
-          } else {
-            console.log('✗ batPct: 未受信');
-          }
-          
-          if (state.name) {
-            console.log('✓ name:', state.name);
-          }
-          
-          if (state.cleanMissionStatus) {
-            console.log('✓ cleanMissionStatus:', JSON.stringify(state.cleanMissionStatus));
-          }
-          
-          // バッテリー情報が含まれている場合
-          if (state.batPct != null) {
-            batteryLevel = state.batPct;
-            console.log(`\n✓✓ バッテリー残量を取得: ${batteryLevel}%`);
-          }
-          
-          // デバイス名が含まれている場合
-          if (state.name) {
-            deviceName = state.name;
-          }
-          
-          // バッテリー情報が取得できたら解決
-          if (batteryLevel != null) {
-            resolved = true; // 解決済みフラグを設定
-            clearTimeout(timeoutId);
-            robot.removeListener('state', stateHandler);
-            console.log('===========================\n');
-            resolve({ batteryLevel, deviceName });
-          } else {
-            console.log('→ batPctが含まれていないため、次の状態更新を待機します...');
-            console.log('===========================\n');
-          }
-        };
-        
-        // タイムアウト設定（30秒）
-        timeoutId = setTimeout(() => {
-          if (resolved) return; // 既に解決済みの場合は何もしない
-          resolved = true; // 解決済みフラグを設定
-          robot.removeListener('state', stateHandler);
-          console.error(`\n✗ タイムアウト: ${stateUpdateCount}回の状態更新を受信しましたが、batPctフィールドが含まれていませんでした。`);
-          reject(new Error('バッテリー状態の取得がタイムアウトしました（30秒）'));
-        }, 30000);
-        
-        // 状態更新イベントをリッスン
-        robot.on('state', stateHandler);
-      });
-      
-      const { batteryLevel, deviceName } = batteryInfo;
-      
-      console.log(`デバイス: ${deviceName}, バッテリー残量: ${batteryLevel}%`);
-
-      // バッテリーが100%でない場合、または強制通知フラグがONの場合はメール通知
-      if (batteryLevel < 100) {
-        console.log(`バッテリー残量が${batteryLevel}%です。メール通知を送信します`);
-        const statusMessage = 'バッテリーが100%ではないため、清掃スケジュールの実行に影響する可能性があります。\n充電を確認してください。';
-        await sendNotification(batteryLevel, deviceName, statusMessage);
-      } else if (FORCE_NOTIFICATION) {
-        console.log('強制通知フラグがONです。バッテリー残量100%ですが通知を送信します（疎通確認）');
-        const statusMessage = 'バッテリーは満充電されています。\nこのメールは疎通確認のための強制通知です。';
-        await sendNotification(batteryLevel, deviceName, statusMessage);
-      } else {
-        console.log(`バッテリー残量は${batteryLevel}%です。通知は不要です`);
-      }
-
-      console.log('バッテリーチェック完了');
-      await robot.end();
-      process.exit(0);
-    } catch (error) {
-      console.error('エラーが発生しました:', error);
-      try {
-        await robot.end();
-      } catch (cleanupError) {
-        console.error('クリーンアップエラー:', cleanupError.message);
-      }
-      process.exit(1);
-    }
-  });
+  console.log('バッテリーチェック完了');
 }
 
 main();
