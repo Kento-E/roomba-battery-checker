@@ -6,13 +6,7 @@ assignees: ["copilot"]
 body:
   - type: markdown
     attributes:
-      value: |
-        バグレポートをご提出いただきありがとうございます。
-
-        💡 **GitHub Copilotを使用する場合**: Issueのコメント欄で
-        `@copilot` とメンションすることで、GitHub Copilotに
-        質問や分析を依頼できます。Copilotに修正とPull Request作成まで
-        依頼することも可能です。
+      value: バグレポートをご提出いただきありがとうございます。
   - type: textarea
     id: what-happened
     attributes:
@@ -72,7 +66,6 @@ body:
     id: copilot-request
     attributes:
       label: GitHub Copilotへの質問（任意）
-      description: GitHub Copilotに分析や質問をしたい場合は、以下のようにメンションしてください。
       placeholder: "@copilot この問題を修正し、Pull Requestを作成してください"
       value: "@copilot この問題を修正し、Pull Requestを作成してください"
     validations:
