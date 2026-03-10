@@ -58,7 +58,7 @@ PRが承認されたときに自動的にマージを実行します。
 2. PRがDraft状態かチェック（Draft状態の場合は自動マージをスキップ）
 3. PRのマージ可能状態を確認
 4. `enablePullRequestAutoMerge` GraphQLミューテーションでauto-mergeを有効化（Squash and Merge方式）
-5. 実際のマージはGitHubの自動マージ機能が実行（ブランチ削除は通常 auto-merge.yml の `--delete-branch` で行われ、失敗時のバックアップとして auto-delete-branch.yml が動作）
+5. 実際のマージはGitHubの自動マージ機能が実行（ブランチ削除は auto-delete-branch.yml が担当）
 
 #### 注意事項
 
@@ -91,5 +91,5 @@ PRがマージされた後、ソースブランチを自動的に削除します
 #### 注意事項
 
 - このワークフローは `auto-merge.yml` と連携して動作します
-- `auto-merge.yml` で `--delete-branch` オプションが使用されているため、通常は自動的にブランチが削除されます
-- このワークフローは、何らかの理由でブランチが削除されなかった場合のバックアップとして機能します
+- `auto-merge.yml` は `enablePullRequestAutoMerge` でauto-mergeを有効化するのみで、ブランチ削除は行いません
+- このワークフローがPRマージ後のブランチ削除を担当します

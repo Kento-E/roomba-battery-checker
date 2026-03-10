@@ -57,10 +57,19 @@ jobs:
           # enablePullRequestAutoMerge を直接呼ぶことで、実際のマージはGitHubの自動マージ機能に委ねる。
           echo "🔄 自動マージを設定中..."
           PR_NODE_ID=$(gh api "/repos/${REPO}/pulls/${PR_NUMBER}" --jq '.node_id')
-          gh api graphql \
+          if ! MERGE_RESULT=$(gh api graphql \
             -f query='mutation($pullRequestId:ID!,$mergeMethod:PullRequestMergeMethod!){enablePullRequestAutoMerge(input:{pullRequestId:$pullRequestId,mergeMethod:$mergeMethod}){pullRequest{number title}}}' \
             -F pullRequestId="${PR_NODE_ID}" \
-            -F mergeMethod="SQUASH"
+            -F mergeMethod="SQUASH" 2>&1); then
+            if echo "${MERGE_RESULT}" | grep -q "unstable status"; then
+              echo "⚠️ ステータスチェックが失敗中のため自動マージを設定できませんでした。"
+              echo "すべてのチェックが成功した後に再度Approveしてください。"
+              exit 0
+            fi
+            echo "❌ 自動マージの設定に失敗しました:"
+            echo "${MERGE_RESULT}"
+            exit 1
+          fi
           
           printf '✅ PR #%s の自動マージが有効化されました\n' "${PR_NUMBER}"
           echo ""
