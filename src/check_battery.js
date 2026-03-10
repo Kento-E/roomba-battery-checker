@@ -4,6 +4,22 @@ const nodemailer = require('nodemailer');
 // 環境変数から設定を読み込み
 const IROBOT_USERNAME = process.env.IROBOT_USERNAME;
 const IROBOT_PASSWORD = process.env.IROBOT_PASSWORD;
+const DEBUG_LOG = process.env.DEBUG_LOG === 'true';
+
+// デバッグログ出力関数
+function debugLog(...args) {
+  if (DEBUG_LOG) {
+    console.log('[DEBUG]', ...args);
+  }
+}
+
+// passwordフィールドをマスクする関数
+function maskPassword(obj) {
+  if (!obj || obj.password === undefined) return obj;
+  const masked = { ...obj };
+  masked.password = '***';
+  return masked;
+}
 const SMTP_SERVER = process.env.SMTP_SERVER;
 const SMTP_PORT = process.env.SMTP_PORT || '587';
 const SMTP_USER = process.env.SMTP_USER;
@@ -85,6 +101,9 @@ async function discoverEndpoints() {
     throw new Error(`iRobotエンドポイントの検出に失敗しました: ${error.message}`);
   }
   const data = response.data;
+  if (DEBUG_LOG) {
+    debugLog('エンドポイント検出レスポンス:', JSON.stringify(data, null, 2));
+  }
   const gigya = data.gigya;
   const deployment = data.deployments?.[data.current_deployment];
 
@@ -119,6 +138,14 @@ async function loginGigya(endpoints) {
   }
 
   const body = response.data;
+  if (DEBUG_LOG) {
+    // UIDSignature・signatureTimestamp・sessionInfo は認証署名・セッショントークンのためマスク
+    const safeGigyaBody = { ...body };
+    if (safeGigyaBody.UIDSignature !== undefined) safeGigyaBody.UIDSignature = '***';
+    if (safeGigyaBody.signatureTimestamp !== undefined) safeGigyaBody.signatureTimestamp = '***';
+    if (safeGigyaBody.sessionInfo !== undefined) safeGigyaBody.sessionInfo = '***';
+    debugLog('Gigyaログインレスポンス:', JSON.stringify(safeGigyaBody, null, 2));
+  }
 
   if (body.errorCode !== 0) {
     throw new Error(
@@ -158,6 +185,14 @@ async function loginIRobot(endpoints, gigyaCredentials) {
   }
 
   const body = response.data;
+  if (DEBUG_LOG) {
+    // password はMQTT認証パスワードのためマスク
+    const safeRobots = {};
+    for (const [id, r] of Object.entries(body.robots || {})) {
+      safeRobots[id] = maskPassword(r);
+    }
+    debugLog('iRobot Cloudログインレスポンス robots:', JSON.stringify(safeRobots, null, 2));
+  }
 
   if (!body.robots || Object.keys(body.robots).length === 0) {
     throw new Error('アカウントに紐づくロボットが見つかりませんでした');
@@ -183,14 +218,19 @@ async function getBatteryLevel() {
     throw new Error('アカウントに紐づくロボットが見つかりませんでした');
   }
   const robot = robots[robotIds[0]];
+  if (DEBUG_LOG) {
+    // password はMQTT認証パスワードのためマスク
+    debugLog('ロボットデータ:', JSON.stringify(maskPassword(robot), null, 2));
+  }
 
   const batteryLevel = robot?.batPct;
   const deviceName = robot?.name ?? 'Roomba';
 
   if (batteryLevel === undefined || batteryLevel === null) {
-    throw new Error(
-      'バッテリー情報を取得できませんでした。ロボットがオフラインの可能性があります。'
+    console.warn(
+      `警告: ${deviceName} のバッテリー情報を取得できませんでした。ロボットがオフラインの可能性があります。`
     );
+    return { batteryLevel: null, deviceName };
   }
 
   return { batteryLevel, deviceName };
@@ -206,6 +246,12 @@ async function main() {
   } catch (error) {
     console.error('エラー:', error.message);
     process.exit(1);
+  }
+
+  // ロボットがオフラインでバッテリー情報が取得できない場合はスキップ
+  if (batteryLevel === null) {
+    console.log('バッテリーチェック完了（ロボットオフラインのためスキップ）');
+    return;
   }
 
   console.log(`デバイス: ${deviceName}, バッテリー残量: ${batteryLevel}%`);

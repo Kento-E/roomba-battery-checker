@@ -14,6 +14,14 @@ on:
         options:
           - 'false'
           - 'true'
+      debug_log:
+        description: 'デバッグログ出力（APIレスポンスなどの詳細ログを出力）'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
 
 permissions:
   contents: read
@@ -46,4 +54,5 @@ jobs:
           SEND_FROM: ${{ secrets.SEND_FROM }}
           SEND_TO: ${{ secrets.SEND_TO }}
           FORCE_NOTIFICATION: ${{ github.event.inputs.force_notification || 'false' }}
+          DEBUG_LOG: ${{ github.event.inputs.debug_log || 'false' }}
         run: npm run check-battery
