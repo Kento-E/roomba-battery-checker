@@ -12,6 +12,14 @@ function debugLog(...args) {
     console.log('[DEBUG]', ...args);
   }
 }
+
+// passwordフィールドをマスクする関数
+function maskPassword(obj) {
+  if (!obj || obj.password === undefined) return obj;
+  const masked = { ...obj };
+  masked.password = '***';
+  return masked;
+}
 const SMTP_SERVER = process.env.SMTP_SERVER;
 const SMTP_PORT = process.env.SMTP_PORT || '587';
 const SMTP_USER = process.env.SMTP_USER;
@@ -128,7 +136,12 @@ async function loginGigya(endpoints) {
   }
 
   const body = response.data;
-  debugLog('Gigyaログインレスポンス:', JSON.stringify({ errorCode: body.errorCode, statusCode: body.statusCode, hasUID: !!body.UID, callId: body.callId }, null, 2));
+  // UIDSignature・signatureTimestamp・sessionInfo は認証署名・セッショントークンのためマスク
+  const safeGigyaBody = { ...body };
+  if (safeGigyaBody.UIDSignature !== undefined) safeGigyaBody.UIDSignature = '***';
+  if (safeGigyaBody.signatureTimestamp !== undefined) safeGigyaBody.signatureTimestamp = '***';
+  if (safeGigyaBody.sessionInfo !== undefined) safeGigyaBody.sessionInfo = '***';
+  debugLog('Gigyaログインレスポンス:', JSON.stringify(safeGigyaBody, null, 2));
 
   if (body.errorCode !== 0) {
     throw new Error(
@@ -168,7 +181,12 @@ async function loginIRobot(endpoints, gigyaCredentials) {
   }
 
   const body = response.data;
-  debugLog('iRobot Cloudログインレスポンス robots:', JSON.stringify(body.robots, null, 2));
+  // password はMQTT認証パスワードのためマスク
+  const safeRobots = {};
+  for (const [id, r] of Object.entries(body.robots || {})) {
+    safeRobots[id] = maskPassword(r);
+  }
+  debugLog('iRobot Cloudログインレスポンス robots:', JSON.stringify(safeRobots, null, 2));
 
   if (!body.robots || Object.keys(body.robots).length === 0) {
     throw new Error('アカウントに紐づくロボットが見つかりませんでした');
@@ -194,7 +212,8 @@ async function getBatteryLevel() {
     throw new Error('アカウントに紐づくロボットが見つかりませんでした');
   }
   const robot = robots[robotIds[0]];
-  debugLog('ロボットデータ:', JSON.stringify(robot, null, 2));
+  // password はMQTT認証パスワードのためマスク
+  debugLog('ロボットデータ:', JSON.stringify(maskPassword(robot), null, 2));
 
   const batteryLevel = robot?.batPct;
   const deviceName = robot?.name ?? 'Roomba';
