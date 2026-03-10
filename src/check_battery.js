@@ -108,7 +108,9 @@ async function awsSignedGet(host, path, credentials, region, service) {
   const secretKey = credentials?.SecretKey ?? credentials?.SecretAccessKey;
   const sessionToken = credentials?.SessionToken ?? credentials?.Token;
   if (!accessKeyId || !secretKey) {
-    throw new Error('awsSignedGet: credentials missing required fields (AccessKeyId / SecretKey)');
+    throw new Error(
+      'awsSignedGet: credentials missing required fields (AccessKeyId / SecretKey or SecretAccessKey)'
+    );
   }
 
   const now = new Date();
