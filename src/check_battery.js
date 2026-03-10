@@ -265,11 +265,14 @@ async function getDeviceShadow(endpoints, robotId, credentials) {
     throw new Error('IoTエンドポイントまたはAWSリージョン情報がありません');
   }
 
+  // Thing Name（robotId）はURLエンコードしてパスセグメントに埋め込む
+  const encodedRobotId = encodeURIComponent(robotId);
+
   let response;
   try {
     response = await awsSignedGet(
       endpoints.mqttAts,
-      `/things/${robotId}/shadow`,
+      `/things/${encodedRobotId}/shadow`,
       credentials,
       endpoints.awsRegion,
       'iotdata'
