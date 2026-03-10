@@ -36,6 +36,7 @@ Roombaのバッテリー残量をiRobot Cloud APIで確認し、100%未満の場
 #### 手動実行オプション
 
 - `force_notification`: `true` にするとバッテリー残量にかかわらずメール通知を送信（疎通確認に使用）
+- `debug_log`: `true` にするとAPIレスポンスやロボットデータなどの詳細なデバッグログを出力（エラー調査に使用）
 
 ### 自動マージ - auto-merge.yml
 
