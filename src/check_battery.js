@@ -303,6 +303,9 @@ async function getDeviceShadowWithRetry(
   maxRetries = 3,
   retryDelayMs = 5000
 ) {
+  if (maxRetries < 1) {
+    throw new Error('maxRetries は 1 以上の値を指定してください');
+  }
   let lastError;
   const retryDelaySeconds = retryDelayMs / 1000;
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
