@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const axios = require('axios');
+const mqtt = require('mqtt');
 const nodemailer = require('nodemailer');
 
 // 環境変数から設定を読み込み
@@ -393,8 +394,114 @@ async function getDeviceShadowWithRetry(
   throw new Error(finalMessage);
 }
 
-// AWS IoT カスタム認証者（Custom Authorizer）経由でDevice Shadowを取得する関数
+// MQTT over WebSocket経由でDevice Shadowを取得する関数
+// AWS IoT カスタム認証者（Custom Authorizer）はMQTT接続向けに設計されているため、
+// WebSocketのクエリパラメータにiot_tokenとシグネチャを渡してMQTT接続する
+async function getDeviceShadowViaMqttWss(endpoints, robotId, iotToken, iotSignature, iotAuthorizerName, iotClientId) {
+  if (!endpoints.mqttAts) {
+    throw new Error('IoTエンドポイント情報がありません');
+  }
+  if (!iotToken || !iotSignature || !iotAuthorizerName) {
+    throw new Error(
+      `IoTカスタム認証情報が不足しています: iotToken=${!!iotToken}, iotSignature=${!!iotSignature}, iotAuthorizerName=${!!iotAuthorizerName}`
+    );
+  }
+
+  return new Promise((resolve, reject) => {
+    // WebSocketクエリパラメータではURLエンコードが必要
+    const url =
+      `wss://${endpoints.mqttAts}/mqtt` +
+      `?x-amz-customauthorizer-name=${encodeURIComponent(iotAuthorizerName)}` +
+      `&iot_token=${encodeURIComponent(iotToken)}` +
+      `&x-amz-customauthorizer-signature=${encodeURIComponent(iotSignature)}`;
+
+    if (DEBUG_LOG) {
+      debugLog('MQTT WebSocket経由Device Shadow取得リクエスト:', {
+        endpoint: endpoints.mqttAts,
+        authorizerName: iotAuthorizerName,
+        hasToken: !!iotToken,
+        hasSignature: !!iotSignature,
+        clientId: iotClientId,
+        tokenPrefix: iotToken ? iotToken.substring(0, 20) + '...' : null,
+      });
+    }
+
+    const client = mqtt.connect(url, {
+      clientId: iotClientId || `node-${Date.now()}`,
+      protocolVersion: 4,
+      keepalive: 60,
+      reconnectPeriod: 0, // 再接続しない（1回の接続で取得して終了）
+    });
+
+    const shadowGetTopic = `$aws/things/${robotId}/shadow/get`;
+    const shadowGetAcceptedTopic = `$aws/things/${robotId}/shadow/get/accepted`;
+    const shadowGetRejectedTopic = `$aws/things/${robotId}/shadow/get/rejected`;
+
+    let settled = false;
+    let timeoutHandle;
+
+    const cleanup = (err, result) => {
+      if (settled) return;
+      settled = true;
+      if (timeoutHandle) clearTimeout(timeoutHandle);
+      client.end(true); // force close
+      if (err) {
+        reject(err);
+      } else {
+        resolve(result);
+      }
+    };
+
+    timeoutHandle = setTimeout(() => {
+      cleanup(new Error('MQTT Device Shadow取得タイムアウト（15秒）'));
+    }, 15000);
+
+    client.on('connect', () => {
+      debugLog('MQTT WebSocket接続成功');
+      client.subscribe([shadowGetAcceptedTopic, shadowGetRejectedTopic], { qos: 1 }, (err) => {
+        if (err) {
+          cleanup(new Error(`MQTTサブスクライブ失敗: ${err instanceof Error ? err.message : String(err)}`, { cause: err }));
+          return;
+        }
+        // Device Shadow GET リクエストを発行
+        client.publish(shadowGetTopic, '', { qos: 1 });
+      });
+    });
+
+    client.on('message', (topic, message) => {
+      if (topic === shadowGetAcceptedTopic) {
+        try {
+          const shadow = JSON.parse(message.toString());
+          if (DEBUG_LOG) {
+            debugLog('MQTT WebSocket経由Device Shadowレスポンス:', JSON.stringify(shadow, null, 2));
+          }
+          cleanup(null, shadow);
+        } catch (e) {
+          cleanup(new Error(`Device Shadow JSONパースエラー: ${e instanceof Error ? e.message : String(e)}`, { cause: e }));
+        }
+      } else if (topic === shadowGetRejectedTopic) {
+        cleanup(new Error(`Device Shadow取得が拒否されました: ${message.toString()}`));
+      }
+    });
+
+    client.on('error', (err) => {
+      if (DEBUG_LOG) {
+        debugLog('MQTT WebSocket接続エラー:', err);
+      }
+      cleanup(new Error(`MQTT接続エラー: ${err instanceof Error ? err.message : String(err)}`, { cause: err }));
+    });
+
+    client.on('close', () => {
+      if (!settled) {
+        cleanup(new Error('MQTT接続が予期せず閉じられました'));
+      }
+    });
+  });
+}
+
+// AWS IoT カスタム認証者（Custom Authorizer）経由でDevice Shadowを取得する関数（HTTP REST - フォールバック）
 // iot_token / iot_signature / iot_authorizer_name を使ってAWS IoT CoreのHTTP REST APIにアクセスする
+// 注意: この方法は Lambda 認証者ポリシーに iot:GetThingShadow が含まれている場合のみ機能する
 async function getDeviceShadowViaCustomAuth(endpoints, robotId, iotToken, iotSignature, iotAuthorizerName, iotClientId) {
   if (!endpoints.mqttAts) {
     throw new Error('IoTエンドポイント情報がありません');
@@ -559,10 +666,34 @@ async function getBatteryLevel() {
 
   // ログインレスポンスに batPct がない場合、Device Shadow から取得
   if (batteryLevel == null) {
-    // 試行1: IoTカスタム認証者経由（iot_token/iot_signature/iot_authorizer_name）
+    // 試行1: MQTT over WebSocket（IoTカスタム認証者・最優先）
+    // Custom Authorizer は MQTT 接続向けに設計されているため HTTP REST ではなく MQTT を使用
     if (iotToken && iotSignature && iotAuthorizerName) {
       try {
-        console.log('Device Shadow経由でバッテリー残量を取得中（IoTカスタム認証者）...');
+        console.log('Device Shadow経由でバッテリー残量を取得中（MQTT over WebSocket）...');
+        const shadow = await getDeviceShadowViaMqttWss(
+          endpoints, robotId, iotToken, iotSignature, iotAuthorizerName, iotClientId
+        );
+        batteryLevel = shadow?.state?.reported?.batPct;
+        if (batteryLevel != null) {
+          return { batteryLevel, deviceName };
+        }
+      } catch (mqttError) {
+        console.warn(
+          `MQTT WebSocket経由での取得に失敗（次の方法を試みます）: ${mqttError instanceof Error ? mqttError.message : String(mqttError)}`
+        );
+        if (DEBUG_LOG) {
+          debugLog('MQTT WebSocketエラー詳細:', mqttError);
+        }
+      }
+    } else if (DEBUG_LOG) {
+      debugLog('IoTカスタム認証情報が不完全なためMQTTスキップ:', { hasToken: !!iotToken, hasSignature: !!iotSignature, hasAuthorizerName: !!iotAuthorizerName });
+    }
+
+    // 試行2: IoTカスタム認証者経由（HTTP REST - フォールバック）
+    if (iotToken && iotSignature && iotAuthorizerName) {
+      try {
+        console.log('Device Shadow経由でバッテリー残量を取得中（IoTカスタム認証者 HTTP）...');
         const shadow = await getDeviceShadowViaCustomAuth(
           endpoints, robotId, iotToken, iotSignature, iotAuthorizerName, iotClientId
         );
@@ -578,11 +709,9 @@ async function getBatteryLevel() {
           debugLog('IoTカスタム認証者エラー詳細:', customAuthError);
         }
       }
-    } else if (DEBUG_LOG) {
-      debugLog('IoTカスタム認証情報が不完全なためスキップ:', { hasToken: !!iotToken, hasSignature: !!iotSignature, hasAuthorizerName: !!iotAuthorizerName });
     }
 
-    // 試行2: httpBaseAuth経由（SigV4 execute-api）
+    // 試行3: httpBaseAuth経由（SigV4 execute-api）
     if (credentials && endpoints.httpBaseAuth) {
       try {
         console.log('Device Shadow経由でバッテリー残量を取得中（httpBaseAuth + SigV4）...');
@@ -601,7 +730,7 @@ async function getBatteryLevel() {
       }
     }
 
-    // 試行3: AWS IoT直接アクセス（iotdata SigV4）
+    // 試行4: AWS IoT直接アクセス（iotdata SigV4）
     if (credentials) {
       console.log('Device Shadow経由でバッテリー残量を取得中（AWS IoT SigV4）...');
       try {
