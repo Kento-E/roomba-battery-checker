@@ -65,10 +65,19 @@ jobs:
               echo "⚠️ ブランチがベースブランチより古くなっています。ブランチを更新してください。"
               exit 1
             fi
-            if [ "${MERGE_STATE}" != "UNSTABLE" ]; then
-              echo "✅ ステータスチェックが完了しました（状態: ${MERGE_STATE}）"
-              break
-            fi
+            case "${MERGE_STATE}" in
+              CLEAN)
+                echo "✅ ステータスチェックが完了しました（状態: ${MERGE_STATE}）"
+                break
+                ;;
+              UNSTABLE|HAS_HOOKS)
+                # ステータスチェックまたはフックスがまだ実行中
+                ;;
+              *)
+                echo "❌ 自動マージを有効化できない状態です（状態: ${MERGE_STATE}）。手動で確認してください。"
+                exit 1
+                ;;
+            esac
             if [ "${ELAPSED}" -ge "${MAX_WAIT_SECONDS}" ]; then
               echo "⚠️ ${MAX_WAIT_SECONDS}秒待機しましたがステータスチェックが完了しませんでした。処理を終了します。"
               exit 1
