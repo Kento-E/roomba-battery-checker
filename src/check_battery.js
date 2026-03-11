@@ -95,7 +95,10 @@ const IROBOT_APP_ID = 'ANDROID-C7FB240E-DF34-42D7-AE4E-A8C17079A294';
 
 // AWS SigV4 署名キー生成
 function getSigningKey(secretKey, dateStamp, regionName, serviceName) {
-  const kDate = crypto.createHmac('sha256', 'AWS4' + secretKey).update(dateStamp).digest();
+  const kDate = crypto
+    .createHmac('sha256', 'AWS4' + secretKey)
+    .update(dateStamp)
+    .digest();
   const kRegion = crypto.createHmac('sha256', kDate).update(regionName).digest();
   const kService = crypto.createHmac('sha256', kRegion).update(serviceName).digest();
   const kSigning = crypto.createHmac('sha256', kService).update('aws4_request').digest();
@@ -105,17 +108,22 @@ function getSigningKey(secretKey, dateStamp, regionName, serviceName) {
 // AWS SigV4 署名付き GET リクエスト
 async function awsSignedGet(host, path, credentials, region, service) {
   const accessKeyId = credentials?.AccessKeyId ?? credentials?.accessKeyId;
-  const secretKey = credentials?.SecretKey ?? credentials?.SecretAccessKey;
-  const sessionToken = credentials?.SessionToken ?? credentials?.Token;
+  const secretKey =
+    credentials?.SecretKey ?? credentials?.SecretAccessKey ?? credentials?.secretAccessKey;
+  const sessionToken = credentials?.SessionToken ?? credentials?.Token ?? credentials?.sessionToken;
   if (!accessKeyId || !secretKey) {
     throw new Error(
-      'awsSignedGet: credentials missing required fields (AccessKeyId / SecretKey or SecretAccessKey)'
+      'awsSignedGet: credentials missing required fields (AccessKeyId / SecretKey, SecretAccessKey, or secretAccessKey)'
     );
   }
 
   const now = new Date();
   const amzdate =
-    now.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, '').slice(0, 15) + 'Z';
+    now
+      .toISOString()
+      .replace(/[-:]/g, '')
+      .replace(/\.\d{3}Z$/, '')
+      .slice(0, 15) + 'Z';
   const datestamp = amzdate.slice(0, 8);
 
   const headerParts = [`host:${host}`, `x-amz-date:${amzdate}`];
@@ -123,8 +131,7 @@ async function awsSignedGet(host, path, credentials, region, service) {
   const canonicalHeaders = headerParts.join('\n') + '\n';
   const signedHeaders = headerParts.map((h) => h.split(':')[0]).join(';');
   const payloadHash = crypto.createHash('sha256').update('').digest('hex');
-  const canonicalRequest =
-    `GET\n${path}\n\n${canonicalHeaders}\n${signedHeaders}\n${payloadHash}`;
+  const canonicalRequest = `GET\n${path}\n\n${canonicalHeaders}\n${signedHeaders}\n${payloadHash}`;
 
   const algorithm = 'AWS4-HMAC-SHA256';
   const credentialScope = `${datestamp}/${region}/${service}/aws4_request`;
@@ -206,14 +213,16 @@ async function loginGigya(endpoints) {
   if (body.errorCode !== 0) {
     throw new Error(
       `Gigya認証エラー: ${
-        body.errorMessage
-          || `errorCode=${body.errorCode}, statusCode=${body.statusCode}, callId=${body.callId}, time=${body.time}`
+        body.errorMessage ||
+        `errorCode=${body.errorCode}, statusCode=${body.statusCode}, callId=${body.callId}, time=${body.time}`
       }`
     );
   }
 
   if (!body.UID || !body.UIDSignature || !body.signatureTimestamp) {
-    throw new Error(`Gigyaレスポンスに必須フィールドがありません: errorCode=${body.errorCode}, statusCode=${body.statusCode}, callId=${body.callId}, time=${body.time}`);
+    throw new Error(
+      `Gigyaレスポンスに必須フィールドがありません: errorCode=${body.errorCode}, statusCode=${body.statusCode}, callId=${body.callId}, time=${body.time}`
+    );
   }
 
   return {
@@ -275,6 +284,14 @@ async function getDeviceShadow(endpoints, robotId, credentials) {
   // Thing Name（robotId）はURLエンコードしてパスセグメントに埋め込む
   const encodedRobotId = encodeURIComponent(robotId);
 
+  if (DEBUG_LOG) {
+    debugLog('Device Shadow取得リクエスト:', {
+      url: `https://${endpoints.mqttAts}/things/${encodedRobotId}/shadow`,
+      region: endpoints.awsRegion,
+      credentialFields: credentials ? Object.keys(credentials) : null,
+    });
+  }
+
   let response;
   try {
     response = await awsSignedGet(
@@ -285,6 +302,13 @@ async function getDeviceShadow(endpoints, robotId, credentials) {
       'iotdata'
     );
   } catch (error) {
+    if (error.response) {
+      const status = error.response?.status;
+      if (DEBUG_LOG) {
+        debugLog('Device Shadow HTTPエラーレスポンス:', { status, body: error.response?.data });
+      }
+      throw new Error(`Device Shadowの取得に失敗しました（HTTP ${status}）`, { cause: error });
+    }
     throw new Error(
       `Device Shadowの取得に失敗しました: ${error instanceof Error ? error.message : String(error)}`,
       { cause: error }
@@ -329,8 +353,8 @@ async function getDeviceShadowWithRetry(
     lastError instanceof Error
       ? lastError.message
       : lastError != null
-      ? String(lastError)
-      : '不明なエラー';
+        ? String(lastError)
+        : '不明なエラー';
   const finalMessage = `${maxRetries}回試行しましたがDevice Shadowの取得に失敗しました: ${lastErrorMessage}`;
   if (lastError != null) {
     throw new Error(finalMessage, { cause: lastError });
