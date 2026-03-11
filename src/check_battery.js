@@ -261,6 +261,11 @@ async function loginIRobot(endpoints, gigyaCredentials) {
   return { robots: body.robots, credentials: body.credentials ?? null };
 }
 
+// 指定時間（ミリ秒）待機する関数
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 // AWS IoT Device Shadow からロボット状態を取得する関数
 async function getDeviceShadow(endpoints, robotId, credentials) {
   if (!endpoints.mqttAts || !endpoints.awsRegion) {
@@ -290,6 +295,35 @@ async function getDeviceShadow(endpoints, robotId, credentials) {
   return response.data;
 }
 
+// Device Shadow取得をリトライ付きで実行する関数
+async function getDeviceShadowWithRetry(
+  endpoints,
+  robotId,
+  credentials,
+  maxRetries = 3,
+  retryDelayMs = 5000
+) {
+  let lastError;
+  const retryDelaySeconds = retryDelayMs / 1000;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await getDeviceShadow(endpoints, robotId, credentials);
+    } catch (error) {
+      lastError = error;
+      if (attempt < maxRetries) {
+        console.warn(
+          `Device Shadow取得に失敗しました（試行${attempt}/${maxRetries}）: ${error.message}`
+        );
+        console.log(`${retryDelaySeconds}秒後にリトライします...`);
+        await sleep(retryDelayMs);
+      }
+    }
+  }
+  throw new Error(
+    `${maxRetries}回試行しましたがDevice Shadowの取得に失敗しました: ${lastError.message}`
+  );
+}
+
 // Cloud APIからバッテリー残量とデバイス名を取得する関数
 async function getBatteryLevel() {
   console.log('iRobot Cloudエンドポイントを検出中...');
@@ -316,15 +350,11 @@ async function getBatteryLevel() {
   let batteryLevel = robot?.batPct;
   const deviceName = robot?.name ?? 'Roomba';
 
-  // ログインレスポンスに batPct がない場合、AWS IoT Device Shadow から取得
+  // ログインレスポンスに batPct がない場合、AWS IoT Device Shadow から取得（リトライあり）
   if (batteryLevel == null && credentials) {
     console.log('Device Shadow経由でバッテリー残量を取得中...');
-    try {
-      const shadow = await getDeviceShadow(endpoints, robotId, credentials);
-      batteryLevel = shadow?.state?.reported?.batPct;
-    } catch (error) {
-      console.warn(`Device Shadow取得に失敗しました: ${error.message}`);
-    }
+    const shadow = await getDeviceShadowWithRetry(endpoints, robotId, credentials);
+    batteryLevel = shadow?.state?.reported?.batPct;
   }
 
   if (batteryLevel === undefined || batteryLevel === null) {
