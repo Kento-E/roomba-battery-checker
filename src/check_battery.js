@@ -293,6 +293,7 @@ async function loginIRobot(endpoints, gigyaCredentials) {
     iotToken: body.iot_token ?? null,
     iotSignature: body.iot_signature ?? null,
     iotAuthorizerName: body.iot_authorizer_name ?? null,
+    iotClientId: body.iot_clientid ?? null,
   };
 }
 
@@ -394,7 +395,7 @@ async function getDeviceShadowWithRetry(
 
 // AWS IoT カスタム認証者（Custom Authorizer）経由でDevice Shadowを取得する関数
 // iot_token / iot_signature / iot_authorizer_name を使ってAWS IoT CoreのHTTP REST APIにアクセスする
-async function getDeviceShadowViaCustomAuth(endpoints, robotId, iotToken, iotSignature, iotAuthorizerName) {
+async function getDeviceShadowViaCustomAuth(endpoints, robotId, iotToken, iotSignature, iotAuthorizerName, iotClientId) {
   if (!endpoints.mqttAts) {
     throw new Error('IoTエンドポイント情報がありません');
   }
@@ -407,11 +408,20 @@ async function getDeviceShadowViaCustomAuth(endpoints, robotId, iotToken, iotSig
   const encodedRobotId = encodeURIComponent(robotId);
   const url = `https://${endpoints.mqttAts}/things/${encodedRobotId}/shadow`;
 
+  // AWS ドキュメントに従い x-amz-customauthorizer-signature はURLエンコードが必要
+  // https://docs.aws.amazon.com/iot/latest/developerguide/custom-auth.html
+  const urlEncodedSignature = encodeURIComponent(iotSignature);
+
   const headers = {
     Authorization: iotToken,
     'x-amz-customauthorizer-name': iotAuthorizerName,
-    'x-amz-customauthorizer-signature': iotSignature,
+    'x-amz-customauthorizer-signature': urlEncodedSignature,
   };
+
+  // iot_clientid がある場合はヘッダーに追加（Lambda認証者がclientIdを確認する可能性）
+  if (iotClientId) {
+    headers['x-amz-iot-client-id'] = iotClientId;
+  }
 
   if (DEBUG_LOG) {
     debugLog('IoTカスタム認証者経由Device Shadow取得リクエスト:', {
@@ -419,7 +429,11 @@ async function getDeviceShadowViaCustomAuth(endpoints, robotId, iotToken, iotSig
       authorizerName: iotAuthorizerName,
       hasToken: !!iotToken,
       hasSignature: !!iotSignature,
+      hasClientId: !!iotClientId,
       tokenPrefix: iotToken ? iotToken.substring(0, 20) + '...' : null,
+      signatureModifiedByEncoding: urlEncodedSignature !== iotSignature,
+      signaturePrefix: iotSignature ? iotSignature.substring(0, 20) + '...' : null,
+      requestHeaders: Object.keys(headers),
     });
   }
 
@@ -527,7 +541,7 @@ async function getBatteryLevel() {
   const gigyaCredentials = await loginGigya(endpoints);
 
   console.log('ロボット情報を取得中...');
-  const { robots, credentials, iotToken, iotSignature, iotAuthorizerName } = await loginIRobot(endpoints, gigyaCredentials);
+  const { robots, credentials, iotToken, iotSignature, iotAuthorizerName, iotClientId } = await loginIRobot(endpoints, gigyaCredentials);
 
   // 最初のロボットを使用
   const robotIds = Object.keys(robots);
@@ -538,6 +552,7 @@ async function getBatteryLevel() {
   const robot = robots[robotId];
   if (DEBUG_LOG) {
     // password はMQTT認証パスワードのためマスク
+    debugLog('ロボットデータ top-level keys:', Object.keys(robot || {}));
     debugLog('ロボットデータ:', JSON.stringify(maskPassword(robot), null, 2));
   }
 
@@ -551,7 +566,7 @@ async function getBatteryLevel() {
       try {
         console.log('Device Shadow経由でバッテリー残量を取得中（IoTカスタム認証者）...');
         const shadow = await getDeviceShadowViaCustomAuth(
-          endpoints, robotId, iotToken, iotSignature, iotAuthorizerName
+          endpoints, robotId, iotToken, iotSignature, iotAuthorizerName, iotClientId
         );
         batteryLevel = shadow?.state?.reported?.batPct;
         if (batteryLevel != null) {
