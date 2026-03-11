@@ -187,6 +187,7 @@ async function discoverEndpoints() {
     apiKey: gigya.api_key,
     gigyaBase: `https://accounts.${gigya.datacenter_domain}`,
     httpBase: deployment.httpBase,
+    httpBaseAuth: deployment.httpBaseAuth ?? null,
     // mqttAts は ATS 対応 IoT エンドポイント。旧形式の deployment では mqtt フィールドにフォールバック
     mqttAts: deployment.mqttAts ?? deployment.mqtt,
     awsRegion: deployment.awsRegion,
@@ -280,7 +281,11 @@ async function loginIRobot(endpoints, gigyaCredentials) {
     throw new Error('アカウントに紐づくロボットが見つかりませんでした');
   }
 
-  return { robots: body.robots, credentials: body.credentials ?? null };
+  return {
+    robots: body.robots,
+    credentials: body.credentials ?? null,
+    iotToken: body.iot_token ?? null,
+  };
 }
 
 // 指定時間（ミリ秒）待機する関数
@@ -379,22 +384,21 @@ async function getDeviceShadowWithRetry(
   throw new Error(finalMessage);
 }
 
-// httpBase経由でDevice Shadowを取得する関数（AWS IoT直接アクセスの代替）
-// iRobot CloudのhttpBaseエンドポイントにロボット認証情報でアクセスする
-async function getDeviceShadowViaHttpBase(httpBase, robotId, robotPassword) {
+// httpBaseAuth経由でDevice Shadowを取得する関数（AWS IoT直接アクセスの代替）
+// iRobot CloudのhttpBaseAuthエンドポイントにiot_tokenでアクセスする
+async function getDeviceShadowViaHttpBaseAuth(httpBaseAuth, robotId, iotToken) {
   const encodedRobotId = encodeURIComponent(robotId);
-  const url = `${httpBase}/v2/things/${encodedRobotId}/shadow`;
+  const url = `${httpBaseAuth}/v2/things/${encodedRobotId}/shadow`;
 
   const headers = {};
-  if (robotPassword) {
-    const encodedAuth = Buffer.from(`${robotId}:${robotPassword}`).toString('base64');
-    headers['Authorization'] = `Basic ${encodedAuth}`;
+  if (iotToken) {
+    headers['Authorization'] = `Bearer ${iotToken}`;
   }
 
   if (DEBUG_LOG) {
-    debugLog('httpBase経由Device Shadow取得リクエスト:', {
+    debugLog('httpBaseAuth経由Device Shadow取得リクエスト:', {
       url,
-      hasBasicAuth: !!robotPassword,
+      hasBearerToken: !!iotToken,
     });
   }
 
@@ -405,25 +409,25 @@ async function getDeviceShadowViaHttpBase(httpBase, robotId, robotPassword) {
     if (error.response) {
       const status = error.response?.status;
       if (DEBUG_LOG) {
-        debugLog('httpBase Device Shadow HTTPエラーレスポンス:', {
+        debugLog('httpBaseAuth Device Shadow HTTPエラーレスポンス:', {
           status,
           body: error.response?.data,
           headers: error.response?.headers,
         });
       }
       throw new Error(
-        `httpBase経由のDevice Shadow取得に失敗しました（HTTP ${status}）`,
+        `httpBaseAuth経由のDevice Shadow取得に失敗しました（HTTP ${status}）`,
         { cause: error }
       );
     }
     throw new Error(
-      `httpBase経由のDevice Shadow取得に失敗しました: ${error instanceof Error ? error.message : String(error)}`,
+      `httpBaseAuth経由のDevice Shadow取得に失敗しました: ${error instanceof Error ? error.message : String(error)}`,
       { cause: error }
     );
   }
 
   if (DEBUG_LOG) {
-    debugLog('httpBase経由Device Shadowレスポンス:', JSON.stringify(response.data, null, 2));
+    debugLog('httpBaseAuth経由Device Shadowレスポンス:', JSON.stringify(response.data, null, 2));
   }
 
   return response.data;
@@ -438,7 +442,7 @@ async function getBatteryLevel() {
   const gigyaCredentials = await loginGigya(endpoints);
 
   console.log('ロボット情報を取得中...');
-  const { robots, credentials } = await loginIRobot(endpoints, gigyaCredentials);
+  const { robots, credentials, iotToken } = await loginIRobot(endpoints, gigyaCredentials);
 
   // 最初のロボットを使用
   const robotIds = Object.keys(robots);
@@ -457,36 +461,52 @@ async function getBatteryLevel() {
 
   // ログインレスポンスに batPct がない場合、Device Shadow から取得
   if (batteryLevel == null) {
-    // まずhttpBase経由を試みる（AWS IoT直接アクセスで403が発生するケースの代替）
-    try {
-      console.log('Device Shadow経由でバッテリー残量を取得中（httpBase）...');
-      const shadow = await getDeviceShadowViaHttpBase(endpoints.httpBase, robotId, robot.password);
-      batteryLevel = shadow?.state?.reported?.batPct;
-    } catch (httpBaseError) {
-      if (DEBUG_LOG) {
-        debugLog(
-          'httpBase経由での取得に失敗:',
-          httpBaseError instanceof Error ? httpBaseError.message : String(httpBaseError)
-        );
-      }
-      // httpBaseが失敗した場合、AWS IoT経由を試みる
-      if (credentials) {
-        console.log('Device Shadow経由でバッテリー残量を取得中（AWS IoT）...');
-        try {
-          const shadow = await getDeviceShadowWithRetry(endpoints, robotId, credentials);
-          batteryLevel = shadow?.state?.reported?.batPct;
-        } catch (awsIotError) {
-          throw new Error(
-            `httpBase経由・AWS IoT経由の両方でDevice Shadowの取得に失敗しました: ${awsIotError instanceof Error ? awsIotError.message : String(awsIotError)}`,
-            { cause: awsIotError }
+    // まずhttpBaseAuth経由を試みる（iot_tokenを使ったBearer認証）
+    if (iotToken && endpoints.httpBaseAuth) {
+      try {
+        console.log('Device Shadow経由でバッテリー残量を取得中（httpBaseAuth）...');
+        const shadow = await getDeviceShadowViaHttpBaseAuth(endpoints.httpBaseAuth, robotId, iotToken);
+        batteryLevel = shadow?.state?.reported?.batPct;
+      } catch (httpBaseAuthError) {
+        if (DEBUG_LOG) {
+          debugLog(
+            'httpBaseAuth経由での取得に失敗:',
+            httpBaseAuthError instanceof Error ? httpBaseAuthError.message : String(httpBaseAuthError)
           );
         }
-      } else {
+        // httpBaseAuthが失敗した場合、AWS IoT経由を試みる
+        if (credentials) {
+          console.log('Device Shadow経由でバッテリー残量を取得中（AWS IoT）...');
+          try {
+            const shadow = await getDeviceShadowWithRetry(endpoints, robotId, credentials);
+            batteryLevel = shadow?.state?.reported?.batPct;
+          } catch (awsIotError) {
+            throw new Error(
+              `httpBaseAuth経由（先行）・AWS IoT経由（後続フォールバック）の両方でDevice Shadowの取得に失敗しました: ${awsIotError instanceof Error ? awsIotError.message : String(awsIotError)}`,
+              { cause: awsIotError }
+            );
+          }
+        } else {
+          throw new Error(
+            `Device Shadowの取得に失敗しました: ${httpBaseAuthError instanceof Error ? httpBaseAuthError.message : String(httpBaseAuthError)}`,
+            { cause: httpBaseAuthError }
+          );
+        }
+      }
+    } else if (credentials) {
+      // iot_tokenがない場合はAWS IoT経由のみ試みる
+      console.log('Device Shadow経由でバッテリー残量を取得中（AWS IoT）...');
+      try {
+        const shadow = await getDeviceShadowWithRetry(endpoints, robotId, credentials);
+        batteryLevel = shadow?.state?.reported?.batPct;
+      } catch (awsIotError) {
         throw new Error(
-          `Device Shadowの取得に失敗しました: ${httpBaseError instanceof Error ? httpBaseError.message : String(httpBaseError)}`,
-          { cause: httpBaseError }
+          `Device Shadowの取得に失敗しました: ${awsIotError instanceof Error ? awsIotError.message : String(awsIotError)}`,
+          { cause: awsIotError }
         );
       }
+    } else {
+      throw new Error('Device Shadowの取得に必要な認証情報（iot_token または credentials）がありません');
     }
   }
 
