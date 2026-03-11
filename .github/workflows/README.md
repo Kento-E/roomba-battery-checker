@@ -56,15 +56,15 @@ PRが承認されたときに自動的にマージを実行します。
 
 1. PR情報を表示（PR番号、タイトル、ベースブランチ、ヘッドブランチ、レビュアー）
 2. PRがDraft状態かチェック（Draft状態の場合は自動マージをスキップ）
-3. PR状態をチェック（DIRTY/BEHIND/BLOCKEDの場合はスキップ）
-4. `enablePullRequestAutoMerge` GraphQLミューテーションでauto-mergeを有効化（Squash and Merge方式）
+3. PR状態をチェック（DIRTY/BEHINDの場合はスキップ）
+4. `enablePullRequestAutoMerge` GraphQLミューテーションでauto-mergeを有効化（Squash and Merge方式。BLOCKED状態でも有効化し、ブロック要因が解消された時点で自動マージを実行）
 5. 実際のマージはGitHubの自動マージ機能が実行（ブランチ削除は auto-delete-branch.yml が担当）
 
 #### 注意事項
 
 - Draft PRは自動マージされません
 - PRにマージコンフリクトがある状態（DIRTY）またはベースブランチよりヘッドブランチが古い状態（BEHIND）の場合は自動マージをスキップします
-- ブランチ保護ルールによってブロックされている場合（BLOCKED）は自動マージをスキップします
+- ブランチ保護ルールによってブロックされている状態（BLOCKED）でも `enablePullRequestAutoMerge` を呼びauto-mergeを有効化します。ブロック要因が解消された時点でGitHubが自動的にマージを実行します
 - `enablePullRequestAutoMerge` でauto-mergeを有効化し、実際のマージはGitHubの自動マージ機能が実行します
 - ブランチ保護ルールで要求される承認とステータスチェックが満たされた時点で自動的にマージされます
 - マージ方式はSquash and Mergeが使用されます

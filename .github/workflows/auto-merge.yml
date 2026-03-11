@@ -62,17 +62,22 @@ jobs:
             echo "⚠️ ブランチがベースブランチより古くなっています。ブランチを更新してください。"
             exit 0
           fi
-          if [ "${MERGE_STATE}" = "BLOCKED" ]; then
-            echo "⚠️ ブランチ保護ルールによってブロックされています。手動で確認してください。"
-            exit 0
-          fi
           
           # 自動マージを有効化（enablePullRequestAutoMerge ミューテーション経由）
           # gh pr merge --auto はPRがマージ可能な状態のとき mergePullRequest を呼ぶため、
           # .github/workflows/ 配下のファイルを含むPRでは workflows 権限が必要となりエラーになる。
           # enablePullRequestAutoMerge を直接呼ぶことで、実際のマージはGitHubの自動マージ機能に委ねる。
+          # BLOCKEDの場合もauto-mergeを有効化する（ブロック要因が解消された時点でGitHubが自動マージを実行）
           echo "🔄 自動マージを設定中..."
-          PR_NODE_ID=$(gh api "/repos/${REPO}/pulls/${PR_NUMBER}" --jq '.node_id')
+          if ! PR_NODE_ID=$(gh api "/repos/${REPO}/pulls/${PR_NUMBER}" --jq '.node_id' 2>&1); then
+            printf '⚠️ PR #%s のNode ID取得に失敗しました（APIエラー）。自動マージをスキップします:\n' "${PR_NUMBER}"
+            echo "${PR_NODE_ID}"
+            exit 0
+          fi
+          if [ -z "${PR_NODE_ID}" ]; then
+            printf '⚠️ PR #%s のNode IDが空でした。自動マージをスキップします。手動で確認してください。\n' "${PR_NUMBER}"
+            exit 0
+          fi
           if ! MERGE_RESULT=$(gh api graphql \
             -f query='mutation($pullRequestId:ID!,$mergeMethod:PullRequestMergeMethod!){enablePullRequestAutoMerge(input:{pullRequestId:$pullRequestId,mergeMethod:$mergeMethod}){pullRequest{number title}}}' \
             -F pullRequestId="${PR_NODE_ID}" \
