@@ -49,20 +49,21 @@ PRが承認されたときに自動的にマージを実行します。
 #### 必要な権限
 
 - `contents: write` - リポジトリのコンテンツを書き込む権限
-- `pull-requests: write` - PRをマージする権限
+- `pull-requests: write` - PRのauto-mergeを有効化する権限
 - `issues: write` - PRマージ時にクローズキーワードで関連イシューを自動クローズする権限
-- `workflows: write` - `.github/workflows/` 配下のファイルを含むPRをマージする権限
 
 #### 動作の流れ
 
 1. PR情報を表示（PR番号、タイトル、ベースブランチ、ヘッドブランチ、レビュアー）
 2. PRがDraft状態かチェック（Draft状態の場合は自動マージをスキップ）
 3. PRのマージ可能状態を確認
-4. 自動マージを有効化（Squash and Merge方式、マージ後にブランチを削除）
+4. `enablePullRequestAutoMerge` GraphQLミューテーションでauto-mergeを有効化（Squash and Merge方式）
+5. 実際のマージはGitHubの自動マージ機能が実行（ブランチ削除は auto-delete-branch.yml が担当）
 
 #### 注意事項
 
 - Draft PRは自動マージされません
+- `enablePullRequestAutoMerge` でauto-mergeを有効化し、実際のマージはGitHubの自動マージ機能が実行します
 - ブランチ保護ルールで要求される承認とステータスチェックが満たされた時点で自動的にマージされます
 - マージ方式はSquash and Mergeが使用されます
 
@@ -90,5 +91,5 @@ PRがマージされた後、ソースブランチを自動的に削除します
 #### 注意事項
 
 - このワークフローは `auto-merge.yml` と連携して動作します
-- `auto-merge.yml` で `--delete-branch` オプションが使用されているため、通常は自動的にブランチが削除されます
-- このワークフローは、何らかの理由でブランチが削除されなかった場合のバックアップとして機能します
+- `auto-merge.yml` は `enablePullRequestAutoMerge` でauto-mergeを有効化するのみで、ブランチ削除は行いません
+- このワークフローがPRマージ後のブランチ削除を担当します
