@@ -285,7 +285,10 @@ async function getDeviceShadow(endpoints, robotId, credentials) {
       'iotdata'
     );
   } catch (error) {
-    throw new Error(`Device Shadowの取得に失敗しました: ${error.message}`);
+    throw new Error(
+      `Device Shadowの取得に失敗しました: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error }
+    );
   }
 
   if (DEBUG_LOG) {
