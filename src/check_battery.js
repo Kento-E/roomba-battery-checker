@@ -315,16 +315,24 @@ async function getDeviceShadowWithRetry(
       lastError = error;
       if (attempt < maxRetries) {
         console.warn(
-          `Device Shadow取得に失敗しました（試行${attempt}/${maxRetries}）: ${error.message}`
+          `Device Shadow取得に失敗しました（試行${attempt}/${maxRetries}）: ${error instanceof Error ? error.message : String(error)}`
         );
         console.log(`${retryDelaySeconds}秒後にリトライします...`);
         await sleep(retryDelayMs);
       }
     }
   }
-  throw new Error(
-    `${maxRetries}回試行しましたがDevice Shadowの取得に失敗しました: ${lastError.message}`
-  );
+  const lastErrorMessage =
+    lastError instanceof Error
+      ? lastError.message
+      : lastError != null
+      ? String(lastError)
+      : '不明なエラー';
+  const finalMessage = `${maxRetries}回試行しましたがDevice Shadowの取得に失敗しました: ${lastErrorMessage}`;
+  if (lastError != null) {
+    throw new Error(finalMessage, { cause: lastError });
+  }
+  throw new Error(finalMessage);
 }
 
 // Cloud APIからバッテリー残量とデバイス名を取得する関数
