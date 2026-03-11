@@ -548,12 +548,16 @@ async function getDeviceShadowViaMqttWebSocket(
     );
   }
 
-  // クエリパラメータでカスタム認証者情報を渡す（WebSocketの場合はURLエンコードが必要）
-  const wsUrl =
-    `wss://${endpoints.mqttAts}:443/mqtt` +
-    `?x-amz-customauthorizer-name=${encodeURIComponent(iotAuthorizerName)}` +
-    `&x-amz-customauthorizer-token=${encodeURIComponent(iotToken)}` +
-    `&x-amz-customauthorizer-signature=${encodeURIComponent(iotSignature)}`;
+  // WebSocketアップグレードリクエストのヘッダーでカスタム認証者情報を渡す
+  // iRobotカスタム認証者は x-irobot-auth ヘッダーをトークンとして使用する
+  // （標準の x-amz-customauthorizer-token ではない点に注意）
+  const wsUrl = `wss://${endpoints.mqttAts}:443/mqtt`;
+  const wsHeaders = {
+    'X-Amz-CustomAuthorizer-Name': iotAuthorizerName,
+    'X-Amz-CustomAuthorizer-Signature': iotSignature,
+    'x-irobot-auth': iotToken,
+    'User-Agent': 'iRobot/2.17.1 Android/28',
+  };
 
   const clientId =
     iotClientId ?? `app-${IROBOT_APP_ID}-${crypto.randomBytes(4).toString('hex')}`;
@@ -564,6 +568,8 @@ async function getDeviceShadowViaMqttWebSocket(
       clientId,
       robotId,
       authorizerName: iotAuthorizerName,
+      // ヘッダー値には認証情報が含まれるためキー名のみ出力
+      wsHeaderKeys: Object.keys(wsHeaders),
     });
   }
 
@@ -574,6 +580,7 @@ async function getDeviceShadowViaMqttWebSocket(
       reconnectPeriod: 0,
       connectTimeout: 10000,
       keepalive: 30,
+      wsOptions: { headers: wsHeaders },
     });
 
     const acceptedTopic = `$aws/things/${robotId}/shadow/get/accepted`;
