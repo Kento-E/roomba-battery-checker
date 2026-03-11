@@ -467,58 +467,62 @@ async function getDeviceShadowViaCustomAuth(endpoints, robotId, iotToken, iotSig
   return response.data;
 }
 
-// httpBaseAuth経由でDevice Shadowを取得する関数（iRobot独自トークン認証）
-// iRobot CloudのhttpBaseAuthエンドポイントにiRobot独自のiotTokenをBearer認証で渡してアクセスする
-// AWS SigV4ではなくiRobot独自の認証トークン形式を使用する
-async function getDeviceShadowViaHttpBaseAuth(endpoints, robotId, iotToken) {
+// httpBaseAuth経由でDevice Shadowを取得する関数（SigV4署名・execute-api）
+// auth2.prod.iot.irobotapi.com は AWS API Gateway エンドポイントのため、
+// credentials を使って execute-api サービスで SigV4 署名を付けてアクセスする
+async function getDeviceShadowViaHttpBaseAuth(endpoints, robotId, credentials) {
   if (!endpoints.httpBaseAuth) {
     throw new Error('httpBaseAuthエンドポイント情報がありません');
   }
-  if (!iotToken) {
-    throw new Error('iotTokenがありません');
+  if (!credentials) {
+    throw new Error('SigV4署名に必要なcredentialsがありません');
   }
 
   const encodedRobotId = encodeURIComponent(robotId);
-  const url = `${endpoints.httpBaseAuth}/v2/things/${encodedRobotId}/shadow`;
+
+  // httpBaseAuth URLからホスト名を抽出
+  const httpBaseAuthUrl = new URL(endpoints.httpBaseAuth);
+  const host = httpBaseAuthUrl.host;
+  const path = `/v2/things/${encodedRobotId}/shadow`;
+
+  // auth2.prod.iot.irobotapi.com は API Gateway（us-east-1 リージョン）
+  const region = 'us-east-1';
 
   if (DEBUG_LOG) {
-    debugLog('httpBaseAuth経由Device Shadow取得リクエスト:', {
-      url,
-      hasToken: !!iotToken,
-      tokenPrefix: iotToken ? iotToken.substring(0, 20) + '...' : null,
+    debugLog('httpBaseAuth SigV4経由Device Shadow取得リクエスト:', {
+      url: `https://${host}${path}`,
+      region,
+      service: 'execute-api',
+      credentialFields: credentials ? Object.keys(credentials) : null,
     });
   }
 
   let response;
   try {
-    response = await axios.get(url, {
-      headers: {
-        Authorization: `Bearer ${iotToken}`,
-      },
-    });
+    response = await awsSignedGet(host, path, credentials, region, 'execute-api');
   } catch (error) {
     if (error.response) {
       const status = error.response?.status;
       if (DEBUG_LOG) {
-        debugLog('httpBaseAuth Device Shadow HTTPエラーレスポンス:', {
+        debugLog('httpBaseAuth SigV4 Device Shadow HTTPエラーレスポンス:', {
           status,
           body: error.response?.data,
           headers: error.response?.headers,
         });
       }
       throw new Error(
-        `httpBaseAuth経由のDevice Shadow取得に失敗しました（HTTP ${status}）`,
+        `httpBaseAuth SigV4経由のDevice Shadow取得に失敗しました（HTTP ${status}）`,
         { cause: error }
       );
     }
     throw new Error(
-      `httpBaseAuth経由のDevice Shadow取得に失敗しました: ${error instanceof Error ? error.message : String(error)}`,
+      `httpBaseAuth SigV4経由のDevice Shadow取得に失敗しました: ${error instanceof Error ? error.message : String(error)}`,
       { cause: error }
     );
   }
 
   if (DEBUG_LOG) {
-    debugLog('httpBaseAuth経由Device Shadowレスポンス:', JSON.stringify(response.data, null, 2));
+    debugLog('httpBaseAuth SigV4経由Device Shadowレスポンス:', JSON.stringify(response.data, null, 2));
   }
 
   return response.data;
@@ -553,26 +557,26 @@ async function getBatteryLevel() {
 
   // ログインレスポンスに batPct がない場合、Device Shadow から取得
   if (batteryLevel == null) {
-    // 試行1: httpBaseAuth経由（iRobot独自トークン Bearer認証・最優先）
-    // disc-prod.iot.irobotapi.com系のiRobot独自エンドポイントにBearer認証でアクセス
-    if (iotToken && endpoints.httpBaseAuth) {
+    // 試行1: httpBaseAuth経由（SigV4署名・execute-api・最優先）
+    // auth2.prod.iot.irobotapi.com は AWS API Gateway のため execute-api で SigV4 署名
+    if (credentials && endpoints.httpBaseAuth) {
       try {
-        console.log('Device Shadow経由でバッテリー残量を取得中（httpBaseAuth Bearer認証）...');
-        const shadow = await getDeviceShadowViaHttpBaseAuth(endpoints, robotId, iotToken);
+        console.log('Device Shadow経由でバッテリー残量を取得中（httpBaseAuth SigV4 execute-api）...');
+        const shadow = await getDeviceShadowViaHttpBaseAuth(endpoints, robotId, credentials);
         batteryLevel = shadow?.state?.reported?.batPct;
         if (batteryLevel != null) {
           return { batteryLevel, deviceName };
         }
       } catch (httpBaseAuthError) {
         console.warn(
-          `httpBaseAuth Bearer認証経由での取得に失敗（次の方法を試みます）: ${httpBaseAuthError instanceof Error ? httpBaseAuthError.message : String(httpBaseAuthError)}`
+          `httpBaseAuth SigV4経由での取得に失敗（次の方法を試みます）: ${httpBaseAuthError instanceof Error ? httpBaseAuthError.message : String(httpBaseAuthError)}`
         );
         if (DEBUG_LOG) {
-          debugLog('httpBaseAuth Bearer認証エラー詳細:', httpBaseAuthError);
+          debugLog('httpBaseAuth SigV4エラー詳細:', httpBaseAuthError);
         }
       }
     } else if (DEBUG_LOG) {
-      debugLog('httpBaseAuth Bearer認証スキップ:', { hasToken: !!iotToken, hasHttpBaseAuth: !!endpoints.httpBaseAuth });
+      debugLog('httpBaseAuth SigV4スキップ:', { hasCredentials: !!credentials, hasHttpBaseAuth: !!endpoints.httpBaseAuth });
     }
 
     // 試行2: IoTカスタム認証者経由（HTTP REST - フォールバック）
