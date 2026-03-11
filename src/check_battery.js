@@ -95,7 +95,10 @@ const IROBOT_APP_ID = 'ANDROID-C7FB240E-DF34-42D7-AE4E-A8C17079A294';
 
 // AWS SigV4 署名キー生成
 function getSigningKey(secretKey, dateStamp, regionName, serviceName) {
-  const kDate = crypto.createHmac('sha256', 'AWS4' + secretKey).update(dateStamp).digest();
+  const kDate = crypto
+    .createHmac('sha256', 'AWS4' + secretKey)
+    .update(dateStamp)
+    .digest();
   const kRegion = crypto.createHmac('sha256', kDate).update(regionName).digest();
   const kService = crypto.createHmac('sha256', kRegion).update(serviceName).digest();
   const kSigning = crypto.createHmac('sha256', kService).update('aws4_request').digest();
@@ -105,17 +108,22 @@ function getSigningKey(secretKey, dateStamp, regionName, serviceName) {
 // AWS SigV4 署名付き GET リクエスト
 async function awsSignedGet(host, path, credentials, region, service) {
   const accessKeyId = credentials?.AccessKeyId ?? credentials?.accessKeyId;
-  const secretKey = credentials?.SecretKey ?? credentials?.SecretAccessKey;
-  const sessionToken = credentials?.SessionToken ?? credentials?.Token;
+  const secretKey =
+    credentials?.SecretKey ?? credentials?.SecretAccessKey ?? credentials?.secretAccessKey;
+  const sessionToken = credentials?.SessionToken ?? credentials?.Token ?? credentials?.sessionToken;
   if (!accessKeyId || !secretKey) {
     throw new Error(
-      'awsSignedGet: credentials missing required fields (AccessKeyId / SecretKey or SecretAccessKey)'
+      'awsSignedGet: credentials missing required fields (AccessKeyId / SecretKey, SecretAccessKey, or secretAccessKey)'
     );
   }
 
   const now = new Date();
   const amzdate =
-    now.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, '').slice(0, 15) + 'Z';
+    now
+      .toISOString()
+      .replace(/[-:]/g, '')
+      .replace(/\.\d{3}Z$/, '')
+      .slice(0, 15) + 'Z';
   const datestamp = amzdate.slice(0, 8);
 
   const headerParts = [`host:${host}`, `x-amz-date:${amzdate}`];
@@ -123,8 +131,7 @@ async function awsSignedGet(host, path, credentials, region, service) {
   const canonicalHeaders = headerParts.join('\n') + '\n';
   const signedHeaders = headerParts.map((h) => h.split(':')[0]).join(';');
   const payloadHash = crypto.createHash('sha256').update('').digest('hex');
-  const canonicalRequest =
-    `GET\n${path}\n\n${canonicalHeaders}\n${signedHeaders}\n${payloadHash}`;
+  const canonicalRequest = `GET\n${path}\n\n${canonicalHeaders}\n${signedHeaders}\n${payloadHash}`;
 
   const algorithm = 'AWS4-HMAC-SHA256';
   const credentialScope = `${datestamp}/${region}/${service}/aws4_request`;
@@ -141,6 +148,18 @@ async function awsSignedGet(host, path, credentials, region, service) {
 
   const requestHeaders = { 'x-amz-date': amzdate, Authorization: authorizationHeader };
   if (sessionToken) requestHeaders['x-amz-security-token'] = sessionToken;
+
+  if (DEBUG_LOG) {
+    debugLog('AWS SigV4署名リクエスト詳細:', {
+      accessKeyIdPrefix: accessKeyId ? accessKeyId.substring(0, 4) : null,
+      secretKeyLength: secretKey ? secretKey.length : 0,
+      hasSessionToken: !!sessionToken,
+      amzdate,
+      credentialScope,
+      signedHeaders,
+      canonicalRequestHash: crypto.createHash('sha256').update(canonicalRequest).digest('hex'),
+    });
+  }
 
   return axios.get(`https://${host}${path}`, { headers: requestHeaders });
 }
@@ -168,6 +187,7 @@ async function discoverEndpoints() {
     apiKey: gigya.api_key,
     gigyaBase: `https://accounts.${gigya.datacenter_domain}`,
     httpBase: deployment.httpBase,
+    httpBaseAuth: deployment.httpBaseAuth ?? null,
     // mqttAts は ATS 対応 IoT エンドポイント。旧形式の deployment では mqtt フィールドにフォールバック
     mqttAts: deployment.mqttAts ?? deployment.mqtt,
     awsRegion: deployment.awsRegion,
@@ -206,14 +226,16 @@ async function loginGigya(endpoints) {
   if (body.errorCode !== 0) {
     throw new Error(
       `Gigya認証エラー: ${
-        body.errorMessage
-          || `errorCode=${body.errorCode}, statusCode=${body.statusCode}, callId=${body.callId}, time=${body.time}`
+        body.errorMessage ||
+        `errorCode=${body.errorCode}, statusCode=${body.statusCode}, callId=${body.callId}, time=${body.time}`
       }`
     );
   }
 
   if (!body.UID || !body.UIDSignature || !body.signatureTimestamp) {
-    throw new Error(`Gigyaレスポンスに必須フィールドがありません: errorCode=${body.errorCode}, statusCode=${body.statusCode}, callId=${body.callId}, time=${body.time}`);
+    throw new Error(
+      `Gigyaレスポンスに必須フィールドがありません: errorCode=${body.errorCode}, statusCode=${body.statusCode}, callId=${body.callId}, time=${body.time}`
+    );
   }
 
   return {
@@ -247,18 +269,37 @@ async function loginIRobot(endpoints, gigyaCredentials) {
     for (const [id, r] of Object.entries(body.robots || {})) {
       safeRobots[id] = maskPassword(r);
     }
+    debugLog('iRobot Cloudログインレスポンス top-level keys:', Object.keys(body));
     debugLog('iRobot Cloudログインレスポンス robots:', JSON.stringify(safeRobots, null, 2));
     debugLog(
       'iRobot CloudログインレスポンスにAWS credentialsが含まれているか:',
       body.credentials != null ? 'あり' : 'なし'
     );
+    debugLog('IoTカスタム認証情報:', {
+      hasIotToken: body.iot_token != null,
+      hasIotSignature: body.iot_signature != null,
+      iotAuthorizerName: body.iot_authorizer_name ?? null,
+      iotClientId: body.iot_clientid ?? null,
+    });
   }
 
   if (!body.robots || Object.keys(body.robots).length === 0) {
     throw new Error('アカウントに紐づくロボットが見つかりませんでした');
   }
 
-  return { robots: body.robots, credentials: body.credentials ?? null };
+  return {
+    robots: body.robots,
+    credentials: body.credentials ?? null,
+    iotToken: body.iot_token ?? null,
+    iotSignature: body.iot_signature ?? null,
+    iotAuthorizerName: body.iot_authorizer_name ?? null,
+    iotClientId: body.iot_clientid ?? null,
+  };
+}
+
+// 指定時間（ミリ秒）待機する関数
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 // AWS IoT Device Shadow からロボット状態を取得する関数
@@ -270,6 +311,14 @@ async function getDeviceShadow(endpoints, robotId, credentials) {
   // Thing Name（robotId）はURLエンコードしてパスセグメントに埋め込む
   const encodedRobotId = encodeURIComponent(robotId);
 
+  if (DEBUG_LOG) {
+    debugLog('Device Shadow取得リクエスト:', {
+      url: `https://${endpoints.mqttAts}/things/${encodedRobotId}/shadow`,
+      region: endpoints.awsRegion,
+      credentialFields: credentials ? Object.keys(credentials) : null,
+    });
+  }
+
   let response;
   try {
     response = await awsSignedGet(
@@ -280,11 +329,200 @@ async function getDeviceShadow(endpoints, robotId, credentials) {
       'iotdata'
     );
   } catch (error) {
-    throw new Error(`Device Shadowの取得に失敗しました: ${error.message}`);
+    if (error.response) {
+      const status = error.response?.status;
+      if (DEBUG_LOG) {
+        debugLog('Device Shadow HTTPエラーレスポンス:', {
+          status,
+          body: error.response?.data,
+          headers: error.response?.headers,
+        });
+      }
+      throw new Error(`Device Shadowの取得に失敗しました（HTTP ${status}）`, { cause: error });
+    }
+    throw new Error(
+      `Device Shadowの取得に失敗しました: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error }
+    );
   }
 
   if (DEBUG_LOG) {
     debugLog('Device Shadowレスポンス:', JSON.stringify(response.data, null, 2));
+  }
+
+  return response.data;
+}
+
+// Device Shadow取得をリトライ付きで実行する関数（AWS IoT直接アクセス）
+async function getDeviceShadowWithRetry(
+  endpoints,
+  robotId,
+  credentials,
+  maxRetries = 3,
+  retryDelayMs = 5000
+) {
+  if (maxRetries < 1) {
+    throw new Error('maxRetries は 1 以上の値を指定してください');
+  }
+  let lastError;
+  const retryDelaySeconds = retryDelayMs / 1000;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await getDeviceShadow(endpoints, robotId, credentials);
+    } catch (error) {
+      lastError = error;
+      if (attempt < maxRetries) {
+        console.warn(
+          `Device Shadow取得に失敗しました（試行${attempt}/${maxRetries}）: ${error instanceof Error ? error.message : String(error)}`
+        );
+        console.log(`${retryDelaySeconds}秒後にリトライします...`);
+        await sleep(retryDelayMs);
+      }
+    }
+  }
+  const lastErrorMessage =
+    lastError instanceof Error
+      ? lastError.message
+      : lastError != null
+        ? String(lastError)
+        : '不明なエラー';
+  const finalMessage = `${maxRetries}回試行しましたがDevice Shadowの取得に失敗しました: ${lastErrorMessage}`;
+  if (lastError != null) {
+    throw new Error(finalMessage, { cause: lastError });
+  }
+  throw new Error(finalMessage);
+}
+
+// AWS IoT カスタム認証者（Custom Authorizer）経由でDevice Shadowを取得する関数（HTTP REST - フォールバック）
+// iot_token / iot_signature / iot_authorizer_name を使ってAWS IoT CoreのHTTP REST APIにアクセスする
+// 注意: この方法は Lambda 認証者ポリシーに iot:GetThingShadow が含まれている場合のみ機能する
+async function getDeviceShadowViaCustomAuth(endpoints, robotId, iotToken, iotSignature, iotAuthorizerName, iotClientId) {
+  if (!endpoints.mqttAts) {
+    throw new Error('IoTエンドポイント情報がありません');
+  }
+  if (!iotToken || !iotSignature || !iotAuthorizerName) {
+    throw new Error(
+      `IoTカスタム認証情報が不足しています: iotToken=${!!iotToken}, iotSignature=${!!iotSignature}, iotAuthorizerName=${!!iotAuthorizerName}`
+    );
+  }
+
+  const encodedRobotId = encodeURIComponent(robotId);
+  const url = `https://${endpoints.mqttAts}/things/${encodedRobotId}/shadow`;
+
+  // HTTPヘッダーではURLエンコード不要（WebSocketのクエリパラメータの場合のみ必要）
+  // URLエンコードすると Lambda がヘッダー値をそのまま署名として扱うため検証失敗の原因となる
+  const headers = {
+    Authorization: iotToken,
+    'x-amz-customauthorizer-name': iotAuthorizerName,
+    'x-amz-customauthorizer-signature': iotSignature,
+  };
+
+  // iot_clientid がある場合はヘッダーに追加（Lambda認証者がclientIdを確認する可能性）
+  if (iotClientId) {
+    headers['x-amz-iot-client-id'] = iotClientId;
+  }
+
+  if (DEBUG_LOG) {
+    debugLog('IoTカスタム認証者経由Device Shadow取得リクエスト:', {
+      url,
+      authorizerName: iotAuthorizerName,
+      hasToken: !!iotToken,
+      hasSignature: !!iotSignature,
+      hasClientId: !!iotClientId,
+      tokenPrefix: iotToken ? iotToken.substring(0, 20) + '...' : null,
+      signatureHasUrlUnsafeChars: iotSignature ? /[+/=]/.test(iotSignature) : false,
+      signaturePrefix: iotSignature ? iotSignature.substring(0, 20) + '...' : null,
+      requestHeaders: Object.keys(headers),
+    });
+  }
+
+  let response;
+  try {
+    response = await axios.get(url, { headers });
+  } catch (error) {
+    if (error.response) {
+      const status = error.response?.status;
+      if (DEBUG_LOG) {
+        debugLog('IoTカスタム認証者 Device Shadow HTTPエラーレスポンス:', {
+          status,
+          body: error.response?.data,
+          headers: error.response?.headers,
+        });
+      }
+      throw new Error(
+        `IoTカスタム認証者経由のDevice Shadow取得に失敗しました（HTTP ${status}）`,
+        { cause: error }
+      );
+    }
+    throw new Error(
+      `IoTカスタム認証者経由のDevice Shadow取得に失敗しました: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error }
+    );
+  }
+
+  if (DEBUG_LOG) {
+    debugLog('IoTカスタム認証者経由Device Shadowレスポンス:', JSON.stringify(response.data, null, 2));
+  }
+
+  return response.data;
+}
+
+// httpBaseAuth経由でDevice Shadowを取得する関数（SigV4署名・execute-api）
+// auth2.prod.iot.irobotapi.com は AWS API Gateway エンドポイントのため、
+// credentials を使って execute-api サービスで SigV4 署名を付けてアクセスする
+async function getDeviceShadowViaHttpBaseAuth(endpoints, robotId, credentials) {
+  if (!endpoints.httpBaseAuth) {
+    throw new Error('httpBaseAuthエンドポイント情報がありません');
+  }
+  if (!credentials) {
+    throw new Error('SigV4署名に必要なcredentialsがありません');
+  }
+
+  const encodedRobotId = encodeURIComponent(robotId);
+
+  // httpBaseAuth URLからホスト名を抽出
+  const httpBaseAuthUrl = new URL(endpoints.httpBaseAuth);
+  const host = httpBaseAuthUrl.host;
+  const path = `/v2/things/${encodedRobotId}/shadow`;
+
+  // auth2.prod.iot.irobotapi.com は API Gateway（us-east-1 リージョン）
+  const region = 'us-east-1';
+
+  if (DEBUG_LOG) {
+    debugLog('httpBaseAuth SigV4経由Device Shadow取得リクエスト:', {
+      url: `https://${host}${path}`,
+      region,
+      service: 'execute-api',
+      credentialFields: credentials ? Object.keys(credentials) : null,
+    });
+  }
+
+  let response;
+  try {
+    response = await awsSignedGet(host, path, credentials, region, 'execute-api');
+  } catch (error) {
+    if (error.response) {
+      const status = error.response?.status;
+      if (DEBUG_LOG) {
+        debugLog('httpBaseAuth SigV4 Device Shadow HTTPエラーレスポンス:', {
+          status,
+          body: error.response?.data,
+          headers: error.response?.headers,
+        });
+      }
+      throw new Error(
+        `httpBaseAuth SigV4経由のDevice Shadow取得に失敗しました（HTTP ${status}）`,
+        { cause: error }
+      );
+    }
+    throw new Error(
+      `httpBaseAuth SigV4経由のDevice Shadow取得に失敗しました: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error }
+    );
+  }
+
+  if (DEBUG_LOG) {
+    debugLog('httpBaseAuth SigV4経由Device Shadowレスポンス:', JSON.stringify(response.data, null, 2));
   }
 
   return response.data;
@@ -299,7 +537,7 @@ async function getBatteryLevel() {
   const gigyaCredentials = await loginGigya(endpoints);
 
   console.log('ロボット情報を取得中...');
-  const { robots, credentials } = await loginIRobot(endpoints, gigyaCredentials);
+  const { robots, credentials, iotToken, iotSignature, iotAuthorizerName, iotClientId } = await loginIRobot(endpoints, gigyaCredentials);
 
   // 最初のロボットを使用
   const robotIds = Object.keys(robots);
@@ -310,20 +548,73 @@ async function getBatteryLevel() {
   const robot = robots[robotId];
   if (DEBUG_LOG) {
     // password はMQTT認証パスワードのためマスク
+    debugLog('ロボットデータ top-level keys:', Object.keys(robot || {}));
     debugLog('ロボットデータ:', JSON.stringify(maskPassword(robot), null, 2));
   }
 
   let batteryLevel = robot?.batPct;
   const deviceName = robot?.name ?? 'Roomba';
 
-  // ログインレスポンスに batPct がない場合、AWS IoT Device Shadow から取得
-  if (batteryLevel == null && credentials) {
-    console.log('Device Shadow経由でバッテリー残量を取得中...');
-    try {
-      const shadow = await getDeviceShadow(endpoints, robotId, credentials);
-      batteryLevel = shadow?.state?.reported?.batPct;
-    } catch (error) {
-      console.warn(`Device Shadow取得に失敗しました: ${error.message}`);
+  // ログインレスポンスに batPct がない場合、Device Shadow から取得
+  if (batteryLevel == null) {
+    // 試行1: httpBaseAuth経由（SigV4署名・execute-api・最優先）
+    // auth2.prod.iot.irobotapi.com は AWS API Gateway のため execute-api で SigV4 署名
+    if (credentials && endpoints.httpBaseAuth) {
+      try {
+        console.log('Device Shadow経由でバッテリー残量を取得中（httpBaseAuth SigV4 execute-api）...');
+        const shadow = await getDeviceShadowViaHttpBaseAuth(endpoints, robotId, credentials);
+        batteryLevel = shadow?.state?.reported?.batPct;
+        if (batteryLevel != null) {
+          return { batteryLevel, deviceName };
+        }
+      } catch (httpBaseAuthError) {
+        console.warn(
+          `httpBaseAuth SigV4経由での取得に失敗（次の方法を試みます）: ${httpBaseAuthError instanceof Error ? httpBaseAuthError.message : String(httpBaseAuthError)}`
+        );
+        if (DEBUG_LOG) {
+          debugLog('httpBaseAuth SigV4エラー詳細:', httpBaseAuthError);
+        }
+      }
+    } else if (DEBUG_LOG) {
+      debugLog('httpBaseAuth SigV4スキップ:', { hasCredentials: !!credentials, hasHttpBaseAuth: !!endpoints.httpBaseAuth });
+    }
+
+    // 試行2: IoTカスタム認証者経由（HTTP REST - フォールバック）
+    // mqttAtsエンドポイントにx-amz-customauthorizer-*ヘッダーでアクセス
+    if (iotToken && iotSignature && iotAuthorizerName) {
+      try {
+        console.log('Device Shadow経由でバッテリー残量を取得中（IoTカスタム認証者 HTTP）...');
+        const shadow = await getDeviceShadowViaCustomAuth(
+          endpoints, robotId, iotToken, iotSignature, iotAuthorizerName, iotClientId
+        );
+        batteryLevel = shadow?.state?.reported?.batPct;
+        if (batteryLevel != null) {
+          return { batteryLevel, deviceName };
+        }
+      } catch (customAuthError) {
+        console.warn(
+          `IoTカスタム認証者経由での取得に失敗（次の方法を試みます）: ${customAuthError instanceof Error ? customAuthError.message : String(customAuthError)}`
+        );
+        if (DEBUG_LOG) {
+          debugLog('IoTカスタム認証者エラー詳細:', customAuthError);
+        }
+      }
+    }
+
+    // 試行3: AWS IoT直接アクセス（iotdata SigV4）
+    if (credentials) {
+      console.log('Device Shadow経由でバッテリー残量を取得中（AWS IoT SigV4）...');
+      try {
+        const shadow = await getDeviceShadowWithRetry(endpoints, robotId, credentials);
+        batteryLevel = shadow?.state?.reported?.batPct;
+      } catch (awsIotError) {
+        throw new Error(
+          `Device Shadow取得をすべての方法で試みましたが失敗しました: ${awsIotError instanceof Error ? awsIotError.message : String(awsIotError)}`,
+          { cause: awsIotError }
+        );
+      }
+    } else {
+      throw new Error('Device Shadowの取得に必要な認証情報がありません');
     }
   }
 

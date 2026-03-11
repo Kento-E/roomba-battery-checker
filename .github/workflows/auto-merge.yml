@@ -47,9 +47,45 @@ jobs:
             exit 0
           fi
           
-          # PRのマージ可能状態を確認
-          echo "📋 PR状態を確認中..."
-          gh pr view "${PR_NUMBER}" --repo "${REPO}" --json mergeable,mergeStateStatus --jq '.mergeable,.mergeStateStatus'
+          # ステータスチェックが完了するまで待機（最大10分）
+          MAX_WAIT_SECONDS=600
+          POLL_INTERVAL_SECONDS=30
+          ELAPSED=0
+          while true; do
+            if ! MERGE_STATE=$(gh pr view "${PR_NUMBER}" --repo "${REPO}" --json mergeStateStatus --jq '.mergeStateStatus'); then
+              echo "❌ PR状態の取得に失敗しました"
+              exit 1
+            fi
+            echo "📋 PR状態: ${MERGE_STATE}（経過 ${ELAPSED}秒）"
+            if [ "${MERGE_STATE}" = "DIRTY" ]; then
+              echo "⚠️ マージコンフリクトが発生しています。コンフリクトを解消してください。"
+              exit 1
+            fi
+            if [ "${MERGE_STATE}" = "BEHIND" ]; then
+              echo "⚠️ ブランチがベースブランチより古くなっています。ブランチを更新してください。"
+              exit 1
+            fi
+            case "${MERGE_STATE}" in
+              CLEAN)
+                echo "✅ ステータスチェックが完了しました（状態: ${MERGE_STATE}）"
+                break
+                ;;
+              UNSTABLE|HAS_HOOKS)
+                # ステータスチェックまたはフックがまだ実行中
+                ;;
+              *)
+                echo "❌ 自動マージを有効化できない状態です（状態: ${MERGE_STATE}）。手動で確認してください。"
+                exit 1
+                ;;
+            esac
+            if [ "${ELAPSED}" -ge "${MAX_WAIT_SECONDS}" ]; then
+              echo "⚠️ ${MAX_WAIT_SECONDS}秒待機しましたがステータスチェックが完了しませんでした。処理を終了します。"
+              exit 1
+            fi
+            echo "⏳ ステータスチェックが実行中です。${POLL_INTERVAL_SECONDS}秒後に再確認します..."
+            sleep "${POLL_INTERVAL_SECONDS}"
+            ELAPSED=$((ELAPSED + POLL_INTERVAL_SECONDS))
+          done
           
           # 自動マージを有効化（enablePullRequestAutoMerge ミューテーション経由）
           # gh pr merge --auto はPRがマージ可能な状態のとき mergePullRequest を呼ぶため、
@@ -61,11 +97,6 @@ jobs:
             -f query='mutation($pullRequestId:ID!,$mergeMethod:PullRequestMergeMethod!){enablePullRequestAutoMerge(input:{pullRequestId:$pullRequestId,mergeMethod:$mergeMethod}){pullRequest{number title}}}' \
             -F pullRequestId="${PR_NODE_ID}" \
             -F mergeMethod="SQUASH" 2>&1); then
-            if echo "${MERGE_RESULT}" | grep -q "unstable status"; then
-              echo "⚠️ ステータスチェックが失敗中のため自動マージを設定できませんでした。"
-              echo "すべてのチェックが成功した後に再度Approveしてください。"
-              exit 0
-            fi
             echo "❌ 自動マージの設定に失敗しました:"
             echo "${MERGE_RESULT}"
             exit 1
