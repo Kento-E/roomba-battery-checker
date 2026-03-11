@@ -408,14 +408,12 @@ async function getDeviceShadowViaCustomAuth(endpoints, robotId, iotToken, iotSig
   const encodedRobotId = encodeURIComponent(robotId);
   const url = `https://${endpoints.mqttAts}/things/${encodedRobotId}/shadow`;
 
-  // AWS ドキュメントに従い x-amz-customauthorizer-signature はURLエンコードが必要
-  // https://docs.aws.amazon.com/iot/latest/developerguide/custom-auth.html
-  const urlEncodedSignature = encodeURIComponent(iotSignature);
-
+  // HTTPヘッダーではURLエンコード不要（WebSocketのクエリパラメータの場合のみ必要）
+  // URLエンコードすると Lambda がヘッダー値をそのまま署名として扱うため検証失敗の原因となる
   const headers = {
     Authorization: iotToken,
     'x-amz-customauthorizer-name': iotAuthorizerName,
-    'x-amz-customauthorizer-signature': urlEncodedSignature,
+    'x-amz-customauthorizer-signature': iotSignature,
   };
 
   // iot_clientid がある場合はヘッダーに追加（Lambda認証者がclientIdを確認する可能性）
@@ -431,7 +429,7 @@ async function getDeviceShadowViaCustomAuth(endpoints, robotId, iotToken, iotSig
       hasSignature: !!iotSignature,
       hasClientId: !!iotClientId,
       tokenPrefix: iotToken ? iotToken.substring(0, 20) + '...' : null,
-      signatureModifiedByEncoding: urlEncodedSignature !== iotSignature,
+      signatureHasUrlUnsafeChars: iotSignature ? /[+/=]/.test(iotSignature) : false,
       signaturePrefix: iotSignature ? iotSignature.substring(0, 20) + '...' : null,
       requestHeaders: Object.keys(headers),
     });
