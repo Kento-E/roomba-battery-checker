@@ -246,8 +246,6 @@ async function loginGigya(endpoints) {
     uid: body.UID,
     uidSignature: body.UIDSignature,
     signatureTimestamp: body.signatureTimestamp,
-    // accounts.getJWT で JWT 取得に使用するセッショントークン（targetEnv: mobile の場合に返される）
-    sessionToken: body.sessionInfo?.sessionToken ?? null,
   };
 }
 
@@ -306,77 +304,6 @@ async function loginIRobot(endpoints, gigyaCredentials) {
 // 指定時間（ミリ秒）待機する関数
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-// Gigya accounts.getJWT でサービス JWT を取得する関数
-// targetEnv: mobile で accounts.login した際に返される sessionToken を使用する
-async function getGigyaJwt(endpoints, sessionToken) {
-  const params = new URLSearchParams({
-    apiKey: endpoints.apiKey,
-    oauth_token: sessionToken,
-    format: 'json',
-  });
-
-  let response;
-  try {
-    response = await axios.post(`${endpoints.gigyaBase}/accounts.getJWT`, params.toString(), {
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    });
-  } catch (error) {
-    throw new Error(`Gigya getJWT リクエストに失敗しました: ${error.message}`);
-  }
-
-  const body = response.data;
-  if (DEBUG_LOG) {
-    debugLog('Gigya getJWT レスポンス errorCode:', body.errorCode);
-  }
-  if (body.errorCode !== 0) {
-    throw new Error(`Gigya JWT取得エラー: ${body.errorMessage ?? `errorCode=${body.errorCode}`}`);
-  }
-  if (!body.id_token) {
-    throw new Error('Gigya getJWT レスポンスに id_token がありません');
-  }
-  return body.id_token;
-}
-
-// Gigya JWT を Bearer トークンとして iRobot Cloud REST API 経由でバッテリー残量を取得する関数
-// /v2/login の LoginCognitoAuthRole は権限不足だが、Gigya JWT は別の権限レベルの可能性がある
-async function getRobotBatteryViaHttp(httpBase, robotId, bearerToken) {
-  const encodedRobotId = encodeURIComponent(robotId);
-  const headers = { Authorization: `Bearer ${bearerToken}` };
-
-  // 複数のエンドポイントパスを試みる（どれが有効かは不明のため）
-  const urls = [
-    `${httpBase}/v2/robot/${encodedRobotId}/state`,
-    `${httpBase}/v2/robots/${encodedRobotId}`,
-    `${httpBase}/v3/robots/${encodedRobotId}`,
-    `${httpBase}/v3/robot/${encodedRobotId}/state`,
-  ];
-
-  for (const url of urls) {
-    try {
-      const res = await axios.get(url, { headers });
-      const body = res.data;
-      if (DEBUG_LOG) {
-        debugLog(`REST試行成功 (${url}):`, JSON.stringify(body, null, 2));
-      }
-      const batPct =
-        body?.batPct ??
-        body?.state?.reported?.batPct ??
-        body?.state?.batPct ??
-        body?.robot?.batPct ??
-        body?.reported?.batPct;
-      if (batPct != null) {
-        return batPct;
-      }
-    } catch (error) {
-      if (DEBUG_LOG) {
-        debugLog(`REST試行失敗 (${url}):`, error.response?.status ?? error.message);
-      }
-    }
-  }
-
-  return null;
 }
 
 // AWS IoT Device Shadow からロボット状態を取得する関数
@@ -670,19 +597,11 @@ async function getDeviceShadowViaMqttWebSocket(
       wsOptions: { headers: wsHeaders },
     });
 
-    // 無名（クラシック）Device Shadow トピック
-    const acceptedTopic = `$aws/things/${robotId}/shadow/get/accepted`;
-    const rejectedTopic = `$aws/things/${robotId}/shadow/get/rejected`;
-    const getTopic = `$aws/things/${robotId}/shadow/get`;
     // ロボットがアクティブ時にリアルタイムで状態をプッシュするトピック
     // Y311060 など新しい Roomba モデルは batPct を永続 Shadow に保存せず
     // 状態遷移時（充電中→稼働中など）に update/accepted へプッシュする
     const updateAcceptedTopic = `$aws/things/${robotId}/shadow/update/accepted`;
-    // 名前付き Shadow "wifistat" — 新しい Roomba モデルがバッテリー状態を
-    // 名前付き Shadow に保存している場合に備えてフォールバックとして試みる
-    const wifistatAcceptedTopic = `$aws/things/${robotId}/shadow/name/wifistat/get/accepted`;
-    const wifistatGetTopic = `$aws/things/${robotId}/shadow/name/wifistat/get`;
-    // iRobot 固有のテレメトリトピック（例: "v011-irbthbu"）
+    // iRobot 固有のテレメトリトピック（例: "v007-irbthbu"）
     // v4 Roomba はこのプレフィックス配下のトピックでロボット状態（バッテリー等）をパブリッシュする
     // kilianp07/roomba-v4 の v4-api.md で `irbtTopics` フィールドとして確認
     const irbtTopicWildcard = endpoints.irbtTopics ? `${endpoints.irbtTopics}/${robotId}/#` : null;
@@ -711,15 +630,15 @@ async function getDeviceShadowViaMqttWebSocket(
 
     client.on('connect', () => {
       debugLog('MQTT接続成功');
-      const topicsToSubscribe = [
-        acceptedTopic,
-        rejectedTopic,
-        updateAcceptedTopic,
-        wifistatAcceptedTopic,
-      ];
-      // irbtTopics が利用可能な場合はロボット固有のテレメトリトピックも購読する
+      // $aws/things/* へのパブリッシュはカスタム認証者ポリシーにより未認可切断を引き起こす可能性がある
+      // そのためパッシブ受信のみとし、更新通知トピックと irbt テレメトリトピックのみ購読する
+      const topicsToSubscribe = [updateAcceptedTopic];
       if (irbtTopicWildcard) {
         topicsToSubscribe.push(irbtTopicWildcard);
+      } else {
+        console.warn(
+          'MQTT: irbtTopics が設定されていません。shadow/update/accepted のみ購読します'
+        );
       }
       client.subscribe(topicsToSubscribe, { qos: 0 }, (err) => {
         if (err) {
@@ -728,20 +647,13 @@ async function getDeviceShadowViaMqttWebSocket(
           );
           return;
         }
-        // 無名 Shadow と名前付き Shadow "wifistat" の両方に GET リクエストを送信
-        client.publish(getTopic, '', { qos: 0 });
-        client.publish(wifistatGetTopic, '', { qos: 0 });
+        // パッシブ受信のみ: shadow GET は送信しない
+        // （未認可パブリッシュがサーバー側切断を引き起こす可能性があるため）
+        debugLog('MQTT購読完了。ロボットの状態更新を待機中...');
       });
     });
 
     client.on('message', (topic, message) => {
-      if (topic === rejectedTopic) {
-        // 無名 Shadow の GET が拒否された場合は警告のみ。他のトピックで引き続き待機する
-        if (DEBUG_LOG) {
-          debugLog('MQTT Device Shadow GET 拒否（他のトピックで待機継続）:', message.toString());
-        }
-        return;
-      }
       try {
         const payload = JSON.parse(message.toString());
         if (DEBUG_LOG) {
@@ -823,30 +735,6 @@ async function getBatteryLevel() {
 
   // ログインレスポンスに batPct がない場合、Device Shadow から取得
   if (batteryLevel == null) {
-    // 試行0: Gigya JWT 経由 REST API
-    // accounts.getJWT で JWT を取得し、iRobot Cloud REST エンドポイントを試みる
-    // LoginCognitoAuthRole（/v2/login 経由の認証情報）では 403 だが Gigya JWT は別権限の可能性がある
-    if (gigyaCredentials.sessionToken) {
-      try {
-        console.log('Gigya JWT経由でバッテリー残量を取得中（REST API）...');
-        const jwt = await getGigyaJwt(endpoints, gigyaCredentials.sessionToken);
-        const batPct = await getRobotBatteryViaHttp(endpoints.httpBase, robotId, jwt);
-        if (batPct != null) {
-          return { batteryLevel: batPct, deviceName };
-        }
-        console.log('Gigya JWT経由のREST APIではバッテリー情報を取得できませんでした');
-      } catch (jwtError) {
-        console.warn(
-          `Gigya JWT経由での取得に失敗（次の方法を試みます）: ${jwtError instanceof Error ? jwtError.message : String(jwtError)}`
-        );
-        if (DEBUG_LOG) {
-          debugLog('Gigya JWTエラー詳細:', jwtError);
-        }
-      }
-    } else if (DEBUG_LOG) {
-      debugLog('Gigya JWTスキップ: sessionToken が取得できませんでした');
-    }
-
     // 試行1: MQTT over WebSocket（IoTカスタム認証者経由）
     // HTTPのDevice Shadow RESTはすべて403になるためMQTTが最も確実な方法
     if (iotToken && iotSignature && iotAuthorizerName && endpoints.mqttAts) {
@@ -942,9 +830,9 @@ async function getBatteryLevel() {
         const shadow = await getDeviceShadowWithRetry(endpoints, robotId, credentials);
         batteryLevel = shadow?.state?.reported?.batPct;
       } catch (awsIotError) {
-        // すべての方法が失敗した場合は警告を出してオフラインとして扱う
+        // すべての方法が失敗した場合は警告を出して null を返す（認証エラーの可能性が高い）
         console.warn(
-          `Device Shadow取得をすべての方法で試みましたが失敗しました（ロボットがオフラインまたは一時的に接続不可の可能性があります）: ${awsIotError instanceof Error ? awsIotError.message : String(awsIotError)}`
+          `Device Shadow取得をすべての方法で試みましたが失敗しました（認証エラーまたは一時的な接続不可）: ${awsIotError instanceof Error ? awsIotError.message : String(awsIotError)}`
         );
         if (DEBUG_LOG) {
           debugLog('AWS IoT SigV4エラー詳細:', awsIotError);
@@ -958,9 +846,7 @@ async function getBatteryLevel() {
   }
 
   if (batteryLevel === undefined || batteryLevel === null) {
-    console.warn(
-      `警告: ${deviceName} のバッテリー情報を取得できませんでした。ロボットがオフラインの可能性があります。`
-    );
+    console.warn(`警告: ${deviceName} のバッテリー情報を取得できませんでした（全試行失敗）。`);
     return { batteryLevel: null, deviceName };
   }
 
@@ -979,9 +865,9 @@ async function main() {
     process.exit(1);
   }
 
-  // ロボットがオフラインでバッテリー情報が取得できない場合はスキップ
+  // バッテリー情報が取得できなかった場合はスキップ
   if (batteryLevel === null) {
-    console.log('バッテリーチェック完了（ロボットオフラインのためスキップ）');
+    console.log('バッテリーチェック完了（バッテリー情報取得失敗のためスキップ）');
     return;
   }
 
