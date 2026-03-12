@@ -52,7 +52,6 @@ PRが承認されたときに自動的にマージを実行します。
 - `contents: write` - リポジトリのコンテンツを書き込む権限
 - `pull-requests: write` - PRのauto-mergeを有効化する権限
 - `issues: write` - PRマージ時にクローズキーワードで関連イシューを自動クローズする権限
-- `workflows: write` - `CLEAN` 状態で直接Squash and Mergeを行う際に、workflowファイル変更を含むPRをマージするための権限
 
 #### 動作の流れ
 
@@ -68,7 +67,7 @@ PRが承認されたときに自動的にマージを実行します。
 
 - Draft PRは自動マージされません
 - `enablePullRequestAutoMerge` は PR が `CLEAN` 状態だと `Pull request is in clean status` エラーになるため、ワークフロー内で直接マージへフォールバックします
-- `.github/workflows/` 配下の変更を含むPRを直接マージする場合は `workflows: write` 権限が必要です
+- `.github/workflows/` 配下の変更を含むPRはリポジトリ設定やトークン権限の影響を受けるため、直接マージに失敗した場合はログの詳細を確認してください
 - 手動実行（`workflow_dispatch`）の場合は、Actions タブ → 「Auto Merge on Approval」→「Run workflow」からPR番号を入力して実行します
 
 ### 自動ブランチ削除 - auto-delete-branch.yml
