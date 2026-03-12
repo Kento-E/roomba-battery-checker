@@ -593,9 +593,18 @@ async function getDeviceShadowViaMqttWebSocket(
       wsOptions: { headers: wsHeaders },
     });
 
+    // 無名（クラシック）Device Shadow トピック
     const acceptedTopic = `$aws/things/${robotId}/shadow/get/accepted`;
     const rejectedTopic = `$aws/things/${robotId}/shadow/get/rejected`;
     const getTopic = `$aws/things/${robotId}/shadow/get`;
+    // ロボットがアクティブ時にリアルタイムで状態をプッシュするトピック
+    // Y311060 など新しい Roomba モデルは batPct を永続 Shadow に保存せず
+    // 状態遷移時（充電中→稼働中など）に update/accepted へプッシュする
+    const updateAcceptedTopic = `$aws/things/${robotId}/shadow/update/accepted`;
+    // 名前付き Shadow "wifistat" — 新しい Roomba モデルがバッテリー状態を
+    // 名前付き Shadow に保存している場合に備えてフォールバックとして試みる
+    const wifistatAcceptedTopic = `$aws/things/${robotId}/shadow/name/wifistat/get/accepted`;
+    const wifistatGetTopic = `$aws/things/${robotId}/shadow/name/wifistat/get`;
 
     let settled = false;
     const MQTT_TIMEOUT_MS = 15000;
@@ -604,7 +613,9 @@ async function getDeviceShadowViaMqttWebSocket(
         settled = true;
         client.end(true);
         reject(
-          new Error(`MQTT Device Shadow取得がタイムアウトしました（${MQTT_TIMEOUT_MS / 1000}秒）`)
+          new Error(
+            `MQTT Device Shadow batPct が見つかりませんでした（${MQTT_TIMEOUT_MS / 1000}秒タイムアウト）`
+          )
         );
       }
     }, MQTT_TIMEOUT_MS);
@@ -620,42 +631,55 @@ async function getDeviceShadowViaMqttWebSocket(
 
     client.on('connect', () => {
       debugLog('MQTT接続成功');
-      client.subscribe([acceptedTopic, rejectedTopic], { qos: 0 }, (err) => {
+      const topicsToSubscribe = [
+        acceptedTopic,
+        rejectedTopic,
+        updateAcceptedTopic,
+        wifistatAcceptedTopic,
+      ];
+      client.subscribe(topicsToSubscribe, { qos: 0 }, (err) => {
         if (err) {
           done(
             new Error(`MQTT購読に失敗しました: ${err instanceof Error ? err.message : String(err)}`)
           );
           return;
         }
-        client.publish(getTopic, '', { qos: 0 }, (pubErr) => {
-          if (pubErr) {
-            done(
-              new Error(
-                `MQTT公開に失敗しました: ${pubErr instanceof Error ? pubErr.message : String(pubErr)}`
-              )
-            );
-          }
-        });
+        // 無名 Shadow と名前付き Shadow "wifistat" の両方に GET リクエストを送信
+        client.publish(getTopic, '', { qos: 0 });
+        client.publish(wifistatGetTopic, '', { qos: 0 });
       });
     });
 
     client.on('message', (topic, message) => {
-      if (topic === acceptedTopic) {
-        try {
-          const shadow = JSON.parse(message.toString());
-          if (DEBUG_LOG) {
-            debugLog('MQTT Device Shadowレスポンス:', JSON.stringify(shadow, null, 2));
-          }
+      if (topic === rejectedTopic) {
+        // 無名 Shadow の GET が拒否された場合は警告のみ。名前付き Shadow や
+        // update/accepted での batPct 取得を引き続き待機する
+        if (DEBUG_LOG) {
+          debugLog('MQTT Device Shadow GET 拒否（他のトピックで待機継続）:', message.toString());
+        }
+        return;
+      }
+      try {
+        const shadow = JSON.parse(message.toString());
+        if (DEBUG_LOG) {
+          debugLog(`MQTT Shadow レスポンス (${topic}):`, JSON.stringify(shadow, null, 2));
+        }
+        const batPct = shadow?.state?.reported?.batPct;
+        if (batPct != null) {
+          // batPct が含まれるメッセージが届いたので解決
           done(null, shadow);
-        } catch (parseErr) {
-          done(
-            new Error(
-              `Device ShadowのJSONパースに失敗しました: ${parseErr instanceof Error ? parseErr.message : String(parseErr)}`
-            )
+        } else if (DEBUG_LOG) {
+          debugLog(
+            `MQTT Shadow (${topic}) に batPct なし。他のトピックで引き続き待機中...`,
+            Object.keys(shadow?.state?.reported ?? {})
           );
         }
-      } else if (topic === rejectedTopic) {
-        done(new Error(`Device Shadow取得が拒否されました: ${message.toString()}`));
+      } catch (parseErr) {
+        done(
+          new Error(
+            `Device ShadowのJSONパースに失敗しました: ${parseErr instanceof Error ? parseErr.message : String(parseErr)}`
+          )
+        );
       }
     });
 
