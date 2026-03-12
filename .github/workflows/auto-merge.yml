@@ -14,6 +14,7 @@ permissions:
   contents: write
   pull-requests: write
   issues: write
+  workflows: write
 
 jobs:
   auto-merge:
@@ -66,6 +67,17 @@ jobs:
             -f query='mutation($pullRequestId:ID!,$mergeMethod:PullRequestMergeMethod!){enablePullRequestAutoMerge(input:{pullRequestId:$pullRequestId,mergeMethod:$mergeMethod}){pullRequest{number title}}}' \
             -F pullRequestId="${PR_NODE_ID}" \
             -F mergeMethod="SQUASH" 2>&1); then
+            # CLEAN 状態では enablePullRequestAutoMerge がエラーになるため、即時マージへフォールバック
+            if printf '%s' "${MERGE_RESULT}" | grep -q 'is in clean status'; then
+              echo "ℹ️ PRがCLEAN状態のため、Squash and Mergeを直接実行します..."
+              if ! gh pr merge "${PR_NUMBER}" --repo "${REPO}" --squash; then
+                echo "⚠️ 直接マージに失敗しました。手動でマージしてください。"
+                exit 0
+              fi
+              printf '✅ PR #%s をSquash and Mergeしました\n' "${PR_NUMBER}"
+              exit 0
+            fi
+
             echo "⚠️ 自動マージの設定に失敗しました。手動でマージしてください。"
             echo "詳細: ${MERGE_RESULT}"
             exit 0
