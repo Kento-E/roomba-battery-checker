@@ -192,6 +192,9 @@ async function discoverEndpoints() {
     // mqttAts は ATS 対応 IoT エンドポイント。旧形式の deployment では mqtt フィールドにフォールバック
     mqttAts: deployment.mqttAts ?? deployment.mqtt,
     awsRegion: deployment.awsRegion,
+    // irbtTopics は iRobot 固有の MQTT トピックプレフィックス（例: "v011-irbthbu"）
+    // v4 Roomba はこのプレフィックス配下のトピックでロボット状態（バッテリー等）をパブリッシュする
+    irbtTopics: deployment.irbtTopics ?? null,
   };
 }
 
@@ -578,6 +581,7 @@ async function getDeviceShadowViaMqttWebSocket(
       clientId,
       robotId,
       authorizerName: iotAuthorizerName,
+      irbtTopics: endpoints.irbtTopics ?? '(なし)',
       // ヘッダー値には認証情報が含まれるためキー名のみ出力
       wsHeaderKeys: Object.keys(wsHeaders),
     });
@@ -605,6 +609,10 @@ async function getDeviceShadowViaMqttWebSocket(
     // 名前付き Shadow に保存している場合に備えてフォールバックとして試みる
     const wifistatAcceptedTopic = `$aws/things/${robotId}/shadow/name/wifistat/get/accepted`;
     const wifistatGetTopic = `$aws/things/${robotId}/shadow/name/wifistat/get`;
+    // iRobot 固有のテレメトリトピック（例: "v011-irbthbu"）
+    // v4 Roomba はこのプレフィックス配下のトピックでロボット状態（バッテリー等）をパブリッシュする
+    // kilianp07/roomba-v4 の v4-api.md で `irbtTopics` フィールドとして確認
+    const irbtTopicWildcard = endpoints.irbtTopics ? `${endpoints.irbtTopics}/${robotId}/#` : null;
 
     let settled = false;
     const MQTT_TIMEOUT_MS = 15000;
@@ -613,9 +621,7 @@ async function getDeviceShadowViaMqttWebSocket(
         settled = true;
         client.end(true);
         reject(
-          new Error(
-            `MQTT Device Shadow batPct が見つかりませんでした（${MQTT_TIMEOUT_MS / 1000}秒タイムアウト）`
-          )
+          new Error(`MQTT batPct が見つかりませんでした（${MQTT_TIMEOUT_MS / 1000}秒タイムアウト）`)
         );
       }
     }, MQTT_TIMEOUT_MS);
@@ -637,6 +643,10 @@ async function getDeviceShadowViaMqttWebSocket(
         updateAcceptedTopic,
         wifistatAcceptedTopic,
       ];
+      // irbtTopics が利用可能な場合はロボット固有のテレメトリトピックも購読する
+      if (irbtTopicWildcard) {
+        topicsToSubscribe.push(irbtTopicWildcard);
+      }
       client.subscribe(topicsToSubscribe, { qos: 0 }, (err) => {
         if (err) {
           done(
@@ -652,32 +662,39 @@ async function getDeviceShadowViaMqttWebSocket(
 
     client.on('message', (topic, message) => {
       if (topic === rejectedTopic) {
-        // 無名 Shadow の GET が拒否された場合は警告のみ。名前付き Shadow や
-        // update/accepted での batPct 取得を引き続き待機する
+        // 無名 Shadow の GET が拒否された場合は警告のみ。他のトピックで引き続き待機する
         if (DEBUG_LOG) {
           debugLog('MQTT Device Shadow GET 拒否（他のトピックで待機継続）:', message.toString());
         }
         return;
       }
       try {
-        const shadow = JSON.parse(message.toString());
+        const payload = JSON.parse(message.toString());
         if (DEBUG_LOG) {
-          debugLog(`MQTT Shadow レスポンス (${topic}):`, JSON.stringify(shadow, null, 2));
+          debugLog(`MQTT メッセージ受信 (${topic}):`, JSON.stringify(payload, null, 2));
         }
-        const batPct = shadow?.state?.reported?.batPct;
+        // Shadow 形式: { state: { reported: { batPct: N } } }
+        // irbt テレメトリ形式: { batPct: N } または { state: { batPct: N } } の可能性がある
+        const batPct =
+          payload?.state?.reported?.batPct ?? payload?.state?.batPct ?? payload?.batPct;
         if (batPct != null) {
           // batPct が含まれるメッセージが届いたので解決
+          // Shadow 形式に統一して返す
+          const shadow =
+            payload?.state?.reported != null
+              ? payload
+              : { state: { reported: { ...payload, batPct } } };
           done(null, shadow);
         } else if (DEBUG_LOG) {
           debugLog(
-            `MQTT Shadow (${topic}) に batPct なし。他のトピックで引き続き待機中...`,
-            Object.keys(shadow?.state?.reported ?? {})
+            `MQTT (${topic}) に batPct なし。他のトピックで引き続き待機中...`,
+            JSON.stringify(payload).substring(0, 200)
           );
         }
       } catch (parseErr) {
         done(
           new Error(
-            `Device ShadowのJSONパースに失敗しました: ${parseErr instanceof Error ? parseErr.message : String(parseErr)}`
+            `MQTTメッセージのJSONパースに失敗しました: ${parseErr instanceof Error ? parseErr.message : String(parseErr)}`
           )
         );
       }
