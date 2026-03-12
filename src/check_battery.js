@@ -246,6 +246,8 @@ async function loginGigya(endpoints) {
     uid: body.UID,
     uidSignature: body.UIDSignature,
     signatureTimestamp: body.signatureTimestamp,
+    // accounts.getJWT で JWT 取得に使用するセッショントークン（targetEnv: mobile の場合に返される）
+    sessionToken: body.sessionInfo?.sessionToken ?? null,
   };
 }
 
@@ -304,6 +306,77 @@ async function loginIRobot(endpoints, gigyaCredentials) {
 // 指定時間（ミリ秒）待機する関数
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Gigya accounts.getJWT でサービス JWT を取得する関数
+// targetEnv: mobile で accounts.login した際に返される sessionToken を使用する
+async function getGigyaJwt(endpoints, sessionToken) {
+  const params = new URLSearchParams({
+    apiKey: endpoints.apiKey,
+    oauth_token: sessionToken,
+    format: 'json',
+  });
+
+  let response;
+  try {
+    response = await axios.post(`${endpoints.gigyaBase}/accounts.getJWT`, params.toString(), {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    });
+  } catch (error) {
+    throw new Error(`Gigya getJWT リクエストに失敗しました: ${error.message}`);
+  }
+
+  const body = response.data;
+  if (DEBUG_LOG) {
+    debugLog('Gigya getJWT レスポンス errorCode:', body.errorCode);
+  }
+  if (body.errorCode !== 0) {
+    throw new Error(`Gigya JWT取得エラー: ${body.errorMessage ?? `errorCode=${body.errorCode}`}`);
+  }
+  if (!body.id_token) {
+    throw new Error('Gigya getJWT レスポンスに id_token がありません');
+  }
+  return body.id_token;
+}
+
+// Gigya JWT を Bearer トークンとして iRobot Cloud REST API 経由でバッテリー残量を取得する関数
+// /v2/login の LoginCognitoAuthRole は権限不足だが、Gigya JWT は別の権限レベルの可能性がある
+async function getRobotBatteryViaHttp(httpBase, robotId, bearerToken) {
+  const encodedRobotId = encodeURIComponent(robotId);
+  const headers = { Authorization: `Bearer ${bearerToken}` };
+
+  // 複数のエンドポイントパスを試みる（どれが有効かは不明のため）
+  const urls = [
+    `${httpBase}/v2/robot/${encodedRobotId}/state`,
+    `${httpBase}/v2/robots/${encodedRobotId}`,
+    `${httpBase}/v3/robots/${encodedRobotId}`,
+    `${httpBase}/v3/robot/${encodedRobotId}/state`,
+  ];
+
+  for (const url of urls) {
+    try {
+      const res = await axios.get(url, { headers });
+      const body = res.data;
+      if (DEBUG_LOG) {
+        debugLog(`REST試行成功 (${url}):`, JSON.stringify(body, null, 2));
+      }
+      const batPct =
+        body?.batPct ??
+        body?.state?.reported?.batPct ??
+        body?.state?.batPct ??
+        body?.robot?.batPct ??
+        body?.reported?.batPct;
+      if (batPct != null) {
+        return batPct;
+      }
+    } catch (error) {
+      if (DEBUG_LOG) {
+        debugLog(`REST試行失敗 (${url}):`, error.response?.status ?? error.message);
+      }
+    }
+  }
+
+  return null;
 }
 
 // AWS IoT Device Shadow からロボット状態を取得する関数
@@ -615,7 +688,8 @@ async function getDeviceShadowViaMqttWebSocket(
     const irbtTopicWildcard = endpoints.irbtTopics ? `${endpoints.irbtTopics}/${robotId}/#` : null;
 
     let settled = false;
-    const MQTT_TIMEOUT_MS = 15000;
+    // ロボットが定期的にテレメトリをパブリッシュするまで待つ時間として 30 秒を確保する
+    const MQTT_TIMEOUT_MS = 30000;
     const timer = setTimeout(() => {
       if (!settled) {
         settled = true;
@@ -703,6 +777,19 @@ async function getDeviceShadowViaMqttWebSocket(
     client.on('error', (err) => {
       done(new Error(`MQTT接続エラー: ${err instanceof Error ? err.message : String(err)}`));
     });
+
+    // 予期しない切断（認証エラーによるサーバー側クローズなど）を検知する
+    client.on('close', () => {
+      if (!settled) {
+        done(new Error('MQTT接続が切断されました（認証エラーまたはネットワーク障害）'));
+      }
+    });
+
+    client.on('offline', () => {
+      if (!settled) {
+        done(new Error('MQTTクライアントがオフラインになりました'));
+      }
+    });
   });
 }
 
@@ -736,7 +823,31 @@ async function getBatteryLevel() {
 
   // ログインレスポンスに batPct がない場合、Device Shadow から取得
   if (batteryLevel == null) {
-    // 試行1: MQTT over WebSocket（IoTカスタム認証者経由・最優先）
+    // 試行0: Gigya JWT 経由 REST API
+    // accounts.getJWT で JWT を取得し、iRobot Cloud REST エンドポイントを試みる
+    // LoginCognitoAuthRole（/v2/login 経由の認証情報）では 403 だが Gigya JWT は別権限の可能性がある
+    if (gigyaCredentials.sessionToken) {
+      try {
+        console.log('Gigya JWT経由でバッテリー残量を取得中（REST API）...');
+        const jwt = await getGigyaJwt(endpoints, gigyaCredentials.sessionToken);
+        const batPct = await getRobotBatteryViaHttp(endpoints.httpBase, robotId, jwt);
+        if (batPct != null) {
+          return { batteryLevel: batPct, deviceName };
+        }
+        console.log('Gigya JWT経由のREST APIではバッテリー情報を取得できませんでした');
+      } catch (jwtError) {
+        console.warn(
+          `Gigya JWT経由での取得に失敗（次の方法を試みます）: ${jwtError instanceof Error ? jwtError.message : String(jwtError)}`
+        );
+        if (DEBUG_LOG) {
+          debugLog('Gigya JWTエラー詳細:', jwtError);
+        }
+      }
+    } else if (DEBUG_LOG) {
+      debugLog('Gigya JWTスキップ: sessionToken が取得できませんでした');
+    }
+
+    // 試行1: MQTT over WebSocket（IoTカスタム認証者経由）
     // HTTPのDevice Shadow RESTはすべて403になるためMQTTが最も確実な方法
     if (iotToken && iotSignature && iotAuthorizerName && endpoints.mqttAts) {
       try {
