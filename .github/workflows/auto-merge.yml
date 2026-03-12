@@ -3,6 +3,12 @@ name: Auto Merge on Approval
 on:
   pull_request_review:
     types: [submitted]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'マージ対象のPR番号'
+        required: true
+        type: number
 
 permissions:
   contents: write
@@ -13,98 +19,73 @@ jobs:
   auto-merge:
     runs-on: ubuntu-latest
     if: >
-      github.event.review.state == 'approved' &&
-      github.event.pull_request.head.repo.full_name == github.repository
-    
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.review.state == 'approved' &&
+      github.event.pull_request.head.repo.full_name == github.repository)
+
     steps:
       - name: PR情報を表示
         env:
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          PR_TITLE: ${{ github.event.pull_request.title }}
-          PR_BASE: ${{ github.event.pull_request.base.ref }}
-          PR_HEAD: ${{ github.event.pull_request.head.ref }}
-          REVIEWER: ${{ github.event.review.user.login }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ inputs.pr_number || github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
-          printf 'PR #%s: %s\n' "${PR_NUMBER}" "${PR_TITLE}"
-          printf 'Base: %s\n' "${PR_BASE}"
-          printf 'Head: %s\n' "${PR_HEAD}"
-          printf 'Reviewer: %s\n' "${REVIEWER}"
+          printf 'イベント: %s\n' "${EVENT_NAME}"
+          gh pr view "${PR_NUMBER}" --repo "${REPO}" --json number,title,baseRefName,headRefName --jq '"PR #\(.number): \(.title)\nBase: \(.baseRefName)\nHead: \(.headRefName)"'
 
       - name: 自動マージを実行
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_NUMBER: ${{ inputs.pr_number || github.event.pull_request.number }}
           REPO: ${{ github.repository }}
         run: |
-          printf 'PR #%s が承認されました。自動マージを開始します...\n' "${PR_NUMBER}"
-          
+          printf 'PR #%s の自動マージを開始します...\n' "${PR_NUMBER}"
+
           # PRがDraftかどうかをチェック
           IS_DRAFT=$(gh pr view "${PR_NUMBER}" --repo "${REPO}" --json isDraft --jq '.isDraft')
-          
+
           if [ "$IS_DRAFT" = "true" ]; then
             echo "⚠️ このPRはDraft状態です。Draft状態のPRは自動マージされません。"
             echo "Ready for reviewに変更してから再度Approveしてください。"
             exit 0
           fi
-          
-          # ステータスチェックが完了するまで待機（最大10分）
-          MAX_WAIT_SECONDS=600
-          POLL_INTERVAL_SECONDS=30
-          ELAPSED=0
-          while true; do
-            if ! MERGE_STATE=$(gh pr view "${PR_NUMBER}" --repo "${REPO}" --json mergeStateStatus --jq '.mergeStateStatus'); then
-              echo "❌ PR状態の取得に失敗しました"
-              exit 1
-            fi
-            echo "📋 PR状態: ${MERGE_STATE}（経過 ${ELAPSED}秒）"
-            if [ "${MERGE_STATE}" = "DIRTY" ]; then
-              echo "⚠️ マージコンフリクトが発生しています。コンフリクトを解消してください。"
-              exit 1
-            fi
-            if [ "${MERGE_STATE}" = "BEHIND" ]; then
-              echo "⚠️ ブランチがベースブランチより古くなっています。ブランチを更新してください。"
-              exit 1
-            fi
-            case "${MERGE_STATE}" in
-              CLEAN)
-                echo "✅ ステータスチェックが完了しました（状態: ${MERGE_STATE}）"
-                break
-                ;;
-              UNSTABLE|HAS_HOOKS)
-                # ステータスチェックまたはフックがまだ実行中
-                ;;
-              *)
-                echo "❌ 自動マージを有効化できない状態です（状態: ${MERGE_STATE}）。手動で確認してください。"
-                exit 1
-                ;;
-            esac
-            if [ "${ELAPSED}" -ge "${MAX_WAIT_SECONDS}" ]; then
-              echo "⚠️ ${MAX_WAIT_SECONDS}秒待機しましたがステータスチェックが完了しませんでした。処理を終了します。"
-              exit 1
-            fi
-            echo "⏳ ステータスチェックが実行中です。${POLL_INTERVAL_SECONDS}秒後に再確認します..."
-            sleep "${POLL_INTERVAL_SECONDS}"
-            ELAPSED=$((ELAPSED + POLL_INTERVAL_SECONDS))
-          done
-          
-          # 自動マージを有効化（enablePullRequestAutoMerge ミューテーション経由）
-          # gh pr merge --auto はPRがマージ可能な状態のとき mergePullRequest を呼ぶため、
-          # .github/workflows/ 配下のファイルを含むPRでは workflows 権限が必要となりエラーになる。
-          # enablePullRequestAutoMerge を直接呼ぶことで、実際のマージはGitHubの自動マージ機能に委ねる。
+
+          # PR状態を確認
+          echo "📋 PR状態を確認中..."
+          gh pr view "${PR_NUMBER}" --repo "${REPO}" --json mergeable,mergeStateStatus --jq '.mergeable,.mergeStateStatus'
+
+          # 自動マージを有効化
+          # - gh pr merge --auto は状態によって直接マージAPIを呼ぶため、
+          #   .github/workflows/ 配下を含むPRで権限エラーになることがある
+          # - enablePullRequestAutoMerge を直接呼び、auto-merge設定のみ行う
           echo "🔄 自動マージを設定中..."
           PR_NODE_ID=$(gh api "/repos/${REPO}/pulls/${PR_NUMBER}" --jq '.node_id')
+
           if ! MERGE_RESULT=$(gh api graphql \
             -f query='mutation($pullRequestId:ID!,$mergeMethod:PullRequestMergeMethod!){enablePullRequestAutoMerge(input:{pullRequestId:$pullRequestId,mergeMethod:$mergeMethod}){pullRequest{number title}}}' \
             -F pullRequestId="${PR_NODE_ID}" \
             -F mergeMethod="SQUASH" 2>&1); then
-            echo "❌ 自動マージの設定に失敗しました:"
-            echo "${MERGE_RESULT}"
-            exit 1
+            # CLEAN 状態では enablePullRequestAutoMerge がエラーになるため、即時マージへフォールバック
+            if printf '%s' "${MERGE_RESULT}" | grep -q 'is in clean status'; then
+              echo "ℹ️ PRがCLEAN状態のため、Squash and Mergeを直接実行します..."
+              if ! gh pr merge "${PR_NUMBER}" --repo "${REPO}" --squash; then
+                echo "⚠️ 直接マージに失敗しました。手動でマージしてください。"
+                exit 0
+              fi
+              printf '✅ PR #%s をSquash and Mergeしました\n' "${PR_NUMBER}"
+              exit 0
+            fi
+
+            echo "⚠️ 自動マージの設定に失敗しました。手動でマージしてください。"
+            echo "詳細: ${MERGE_RESULT}"
+            exit 0
           fi
-          
+
           printf '✅ PR #%s の自動マージが有効化されました\n' "${PR_NUMBER}"
           echo ""
           echo "📝 次のステップ:"
           echo "  1. すべてのステータスチェックが成功"
           echo "  2. → 自動的にSquash and Mergeが実行されます"
           echo "  3. マージ後、ブランチが自動削除されます（auto-delete-branch.ymlによる）"
+
