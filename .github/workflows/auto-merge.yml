@@ -56,11 +56,18 @@ jobs:
           gh pr view "${PR_NUMBER}" --repo "${REPO}" --json mergeable,mergeStateStatus --jq '.mergeable,.mergeStateStatus'
 
           # 自動マージを有効化
-          # - PRがマージ可能な状態（CLEAN）のとき: 直接 Squash and Merge を実行
-          # - PRがまだマージ可能でない状態（BLOCKED等）のとき: auto-mergeを有効化しGitHubが条件充足時にマージ
+          # - gh pr merge --auto は状態によって直接マージAPIを呼ぶため、
+          #   .github/workflows/ 配下を含むPRで権限エラーになることがある
+          # - enablePullRequestAutoMerge を直接呼び、auto-merge設定のみ行う
           echo "🔄 自動マージを設定中..."
-          if ! gh pr merge "${PR_NUMBER}" --repo "${REPO}" --squash --auto; then
+          PR_NODE_ID=$(gh api "/repos/${REPO}/pulls/${PR_NUMBER}" --jq '.node_id')
+
+          if ! MERGE_RESULT=$(gh api graphql \
+            -f query='mutation($pullRequestId:ID!,$mergeMethod:PullRequestMergeMethod!){enablePullRequestAutoMerge(input:{pullRequestId:$pullRequestId,mergeMethod:$mergeMethod}){pullRequest{number title}}}' \
+            -F pullRequestId="${PR_NODE_ID}" \
+            -F mergeMethod="SQUASH" 2>&1); then
             echo "⚠️ 自動マージの設定に失敗しました。手動でマージしてください。"
+            echo "詳細: ${MERGE_RESULT}"
             exit 0
           fi
 
