@@ -1,0 +1,54 @@
+name: PRマージ後のブランチ自動削除
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  contents: write
+
+jobs:
+  delete-branch:
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.merged == true
+
+    steps:
+      - name: ブランチ情報を表示
+        env:
+          HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
+          BASE_BRANCH: ${{ github.event.pull_request.base.ref }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          printf 'PR #%s がマージされました\n' "${PR_NUMBER}"
+          printf 'ベースブランチ: %s\n' "${BASE_BRANCH}"
+          printf 'ヘッドブランチ: %s\n' "${HEAD_BRANCH}"
+
+      - name: ヘッドブランチを削除
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
+          REPO: ${{ github.repository }}
+        run: |
+          printf 'ブランチ "%s" を削除します...\n' "${HEAD_BRANCH}"
+
+          HTTP_STATUS=$(gh api \
+            --method DELETE \
+            --silent \
+            -w "%{http_code}" \
+            "/repos/${REPO}/git/refs/heads/${HEAD_BRANCH}" 2>/dev/null) || true
+
+          case "${HTTP_STATUS}" in
+            204)
+              printf '✅ ブランチ "%s" を削除しました\n' "${HEAD_BRANCH}"
+              ;;
+            404)
+              printf 'ℹ️ ブランチ "%s" はすでに削除されています\n' "${HEAD_BRANCH}"
+              ;;
+            422)
+              printf 'ℹ️ ブランチ "%s" は保護されているため削除できません\n' "${HEAD_BRANCH}"
+              ;;
+            *)
+              printf '❌ ブランチ "%s" の削除に失敗しました (HTTP %s)\n' "${HEAD_BRANCH}" "${HTTP_STATUS}"
+              exit 1
+              ;;
+          esac
