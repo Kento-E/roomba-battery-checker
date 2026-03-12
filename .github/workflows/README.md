@@ -45,6 +45,7 @@ PRが承認されたときに自動的にマージを実行します。
 #### トリガー条件
 
 - **PR承認時**: PRにApproveレビューが送信されたとき（`pull_request_review: submitted`）
+- **手動実行**: Actions タブから手動でも実行可能（`workflow_dispatch`）。PR番号を入力して実行する
 
 #### 必要な権限
 
@@ -56,19 +57,18 @@ PRが承認されたときに自動的にマージを実行します。
 
 1. PR情報を表示（PR番号、タイトル、ベースブランチ、ヘッドブランチ、レビュアー）
 2. PRがDraft状態かチェック（Draft状態の場合は自動マージをスキップ）
-3. ステータスチェックが完了するまで待機（最大10分間、30秒ごとにポーリング）
-4. `enablePullRequestAutoMerge` GraphQLミューテーションでauto-mergeを有効化（Squash and Merge方式）
-5. 実際のマージはGitHubの自動マージ機能が実行（ブランチ削除は auto-delete-branch.yml が担当）
+3. PR状態を表示（`mergeable`, `mergeStateStatus`）
+4. GraphQL `enablePullRequestAutoMerge` でauto-mergeを有効化
+   - PRが `CLEAN` 以外の状態では auto-merge 設定を行い、条件充足後に自動マージ
+   - PRが `CLEAN` 状態では GitHub仕様上 auto-merge 設定ができないため、`Squash and Merge` を即時実行
+5. マージ後、ブランチは auto-delete-branch.yml によって削除される
 
 #### 注意事項
 
 - Draft PRは自動マージされません
-- Approve時点でステータスチェックが実行中（UNSTABLE）の場合、最大10分間待機して完了後に自動マージを設定します
-- ステータスチェックが失敗した場合や、PRにマージコンフリクトがある状態（DIRTY）、またはベースブランチよりヘッドブランチが古い状態（BEHIND）の場合は、自動マージを設定せずエラーで終了します（DIRTY/BEHIND 自体はステータスチェックの失敗ではありません）
-- 10分経過してもチェックが完了しない場合はエラーで終了します
-- `enablePullRequestAutoMerge` でauto-mergeを有効化し、実際のマージはGitHubの自動マージ機能が実行します
-- ブランチ保護ルールで要求される承認とステータスチェックが満たされた時点で自動的にマージされます
-- マージ方式はSquash and Mergeが使用されます
+- `enablePullRequestAutoMerge` は PR が `CLEAN` 状態だと `Pull request is in clean status` エラーになるため、ワークフロー内で直接マージへフォールバックします
+- `.github/workflows/` 配下の変更を含むPRはリポジトリ設定やトークン権限の影響を受けるため、直接マージに失敗した場合はログの詳細を確認してください
+- 手動実行（`workflow_dispatch`）の場合は、Actions タブ → 「Auto Merge on Approval」→「Run workflow」からPR番号を入力して実行します
 
 ### 自動ブランチ削除 - auto-delete-branch.yml
 
