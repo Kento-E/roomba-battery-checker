@@ -68,6 +68,7 @@ jobs:
           # .github/workflows/ 配下のファイルを含むPRでは workflows 権限が必要となりエラーになる。
           # enablePullRequestAutoMerge を直接呼ぶことで、実際のマージはGitHubの自動マージ機能に委ねる。
           # BLOCKEDの場合もauto-mergeを有効化する（ブロック要因が解消された時点でGitHubが自動マージを実行）
+          # UNSTABLEの場合はチェックが実行中の可能性があるため最大5分待機してリトライする
           echo "🔄 自動マージを設定中..."
           if ! PR_NODE_ID=$(gh api "/repos/${REPO}/pulls/${PR_NUMBER}" --jq '.node_id' 2>&1); then
             printf '⚠️ PR #%s のNode ID取得に失敗しました（APIエラー）。自動マージをスキップします:\n' "${PR_NUMBER}"
@@ -78,18 +79,61 @@ jobs:
             printf '⚠️ PR #%s のNode IDが空でした。自動マージをスキップします。手動で確認してください。\n' "${PR_NUMBER}"
             exit 0
           fi
-          if ! MERGE_RESULT=$(gh api graphql \
-            -f query='mutation($pullRequestId:ID!,$mergeMethod:PullRequestMergeMethod!){enablePullRequestAutoMerge(input:{pullRequestId:$pullRequestId,mergeMethod:$mergeMethod}){pullRequest{number title}}}' \
-            -F pullRequestId="${PR_NODE_ID}" \
-            -F mergeMethod="SQUASH" 2>&1); then
-            echo "⚠️ 自動マージをスキップしました:"
-            echo "${MERGE_RESULT}"
-            exit 0
+
+          MAX_WAIT_SECONDS=300
+          RETRY_INTERVAL=30
+          ELAPSED=0
+          AUTO_MERGE_ENABLED=false
+
+          while true; do
+            if MERGE_RESULT=$(gh api graphql \
+              -f query='mutation($pullRequestId:ID!,$mergeMethod:PullRequestMergeMethod!){enablePullRequestAutoMerge(input:{pullRequestId:$pullRequestId,mergeMethod:$mergeMethod}){pullRequest{number title}}}' \
+              -F pullRequestId="${PR_NODE_ID}" \
+              -F mergeMethod="SQUASH" 2>&1); then
+              AUTO_MERGE_ENABLED=true
+              break
+            fi
+
+            # UNSTABLE以外のエラーは即座にスキップ
+            if ! echo "${MERGE_RESULT}" | grep -q "unstable status"; then
+              echo "⚠️ 自動マージをスキップしました:"
+              echo "${MERGE_RESULT}"
+              exit 0
+            fi
+
+            # UNSTABLEの場合: チェックが実行中かどうか確認
+            if ! HEAD_SHA=$(gh pr view "${PR_NUMBER}" --repo "${REPO}" --json headRefOid --jq '.headRefOid' 2>&1); then
+              printf '⚠️ PR #%s のHEAD SHA取得に失敗しました。自動マージをスキップします:\n' "${PR_NUMBER}"
+              echo "${HEAD_SHA}"
+              exit 0
+            fi
+            if ! IN_PROGRESS_COUNT=$(gh api "/repos/${REPO}/commits/${HEAD_SHA}/check-runs" \
+              --jq '[.check_runs[] | select(.status == "in_progress" or .status == "queued")] | length' 2>&1); then
+              printf '⚠️ PR #%s のチェック実行状態の取得に失敗しました。自動マージをスキップします:\n' "${PR_NUMBER}"
+              echo "${IN_PROGRESS_COUNT}"
+              exit 0
+            fi
+
+            if [ "${IN_PROGRESS_COUNT}" = "0" ]; then
+              printf '⚠️ PR #%s のすべてのチェックが完了していますが、PR状態がUNSTABLEのままです。必須チェックが失敗している可能性があります。\n' "${PR_NUMBER}"
+              exit 0
+            fi
+
+            if [ "${ELAPSED}" -ge "${MAX_WAIT_SECONDS}" ]; then
+              printf '⚠️ PR #%s のチェック完了待ちがタイムアウトしました（%d秒）。自動マージをスキップします。\n' "${PR_NUMBER}" "${ELAPSED}"
+              exit 0
+            fi
+
+            printf '⏳ PR #%s のチェックが実行中のためUNSTABLEです。%d秒後にリトライ... (%d/%d秒経過)\n' "${PR_NUMBER}" "${RETRY_INTERVAL}" "${ELAPSED}" "${MAX_WAIT_SECONDS}"
+            sleep "${RETRY_INTERVAL}"
+            ELAPSED=$((ELAPSED + RETRY_INTERVAL))
+          done
+
+          if [ "${AUTO_MERGE_ENABLED}" = "true" ]; then
+            printf '✅ PR #%s の自動マージが有効化されました\n' "${PR_NUMBER}"
+            echo ""
+            echo "📝 次のステップ:"
+            echo "  1. すべてのステータスチェックが成功"
+            echo "  2. → 自動的にSquash and Mergeが実行されます"
+            echo "  3. マージ後、ブランチが自動削除されます（auto-delete-branch.ymlによる）"
           fi
-          
-          printf '✅ PR #%s の自動マージが有効化されました\n' "${PR_NUMBER}"
-          echo ""
-          echo "📝 次のステップ:"
-          echo "  1. すべてのステータスチェックが成功"
-          echo "  2. → 自動的にSquash and Mergeが実行されます"
-          echo "  3. マージ後、ブランチが自動削除されます（auto-delete-branch.ymlによる）"
