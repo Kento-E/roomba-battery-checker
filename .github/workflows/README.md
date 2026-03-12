@@ -52,7 +52,6 @@ PRが承認されたときに自動的にマージを実行します。
 - `contents: write` - リポジトリのコンテンツを書き込む権限
 - `pull-requests: write` - PRのauto-mergeを有効化する権限
 - `issues: write` - PRマージ時にクローズキーワードで関連イシューを自動クローズする権限
-- `workflows: write` - `.github/workflows/` 配下のファイルを含むPRのマージに必要な権限
 
 #### 動作の流れ
 
