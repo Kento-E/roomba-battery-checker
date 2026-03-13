@@ -59,26 +59,39 @@ jobs:
           # - gh pr merge --auto は状態によって直接マージAPIを呼ぶため、
           #   .github/workflows/ 配下を含むPRで権限エラーになることがある
           # - enablePullRequestAutoMerge を直接呼び、auto-merge設定のみ行う
-          # - UNSTABLE状態（チェック実行中）の場合は最大10回（30秒間隔）リトライする
+          # - UNSTABLE状態（チェック実行中）の場合は最大10回（30秒間隔）待機してから試行する
+          echo "🔄 自動マージを設定中..."
           PR_NODE_ID=$(gh api "/repos/${REPO}/pulls/${PR_NUMBER}" --jq '.node_id')
+
+          # UNSTABLE状態（チェック実行中）の場合は最大10回待機してからAuto-merge APIを呼ぶ
           MAX_RETRIES=10
           RETRY_INTERVAL=30
-
-          for ATTEMPT in $(seq 1 $((MAX_RETRIES + 1))); do
-            echo "🔄 自動マージを設定中..."
-
-            if MERGE_RESULT=$(gh api graphql \
-              -f query='mutation($pullRequestId:ID!,$mergeMethod:PullRequestMergeMethod!){enablePullRequestAutoMerge(input:{pullRequestId:$pullRequestId,mergeMethod:$mergeMethod}){pullRequest{number title}}}' \
-              -F pullRequestId="${PR_NODE_ID}" \
-              -F mergeMethod="SQUASH" 2>&1); then
-              printf '✅ PR #%s の自動マージが有効化されました\n' "${PR_NUMBER}"
-              echo ""
-              echo "📝 次のステップ:"
-              echo "  1. すべてのステータスチェックが成功"
-              echo "  2. → 自動的にSquash and Mergeが実行されます"
-              exit 0
+          for ATTEMPT in $(seq 1 ${MAX_RETRIES}); do
+            MERGE_STATE=$(gh pr view "${PR_NUMBER}" --repo "${REPO}" --json mergeStateStatus --jq '.mergeStateStatus' 2>/dev/null || echo "UNKNOWN")
+            if [ "${MERGE_STATE}" != "UNSTABLE" ]; then
+              break
             fi
+            HEAD_SHA=$(gh pr view "${PR_NUMBER}" --repo "${REPO}" --json headRefOid --jq '.headRefOid' 2>/dev/null || true)
+            IN_PROGRESS=0
+            if [ -n "${HEAD_SHA}" ]; then
+              IN_PROGRESS=$(gh api "/repos/${REPO}/commits/${HEAD_SHA}/check-runs" \
+                --jq '[.check_runs[] | select(.status == "in_progress" or .status == "queued")] | length' 2>/dev/null || echo "0")
+              if ! printf '%s' "${IN_PROGRESS}" | grep -qE '^[0-9]+$'; then
+                IN_PROGRESS=0
+              fi
+            fi
+            if [ "${IN_PROGRESS}" -eq 0 ]; then
+              break
+            fi
+            printf '⏳ %d件のチェックが進行中です。%d秒後にリトライします... (%d/%d)\n' \
+              "${IN_PROGRESS}" "${RETRY_INTERVAL}" "${ATTEMPT}" "${MAX_RETRIES}"
+            sleep "${RETRY_INTERVAL}"
+          done
 
+          if ! MERGE_RESULT=$(gh api graphql \
+            -f query='mutation($pullRequestId:ID!,$mergeMethod:PullRequestMergeMethod!){enablePullRequestAutoMerge(input:{pullRequestId:$pullRequestId,mergeMethod:$mergeMethod}){pullRequest{number title}}}' \
+            -F pullRequestId="${PR_NODE_ID}" \
+            -F mergeMethod="SQUASH" 2>&1); then
             # CLEAN 状態では enablePullRequestAutoMerge がエラーになるため、即時マージへフォールバック
             if printf '%s' "${MERGE_RESULT}" | grep -q 'is in clean status'; then
               echo "ℹ️ PRがCLEAN状態のため、Squash and Mergeを直接実行します..."
@@ -98,39 +111,14 @@ jobs:
               exit 0
             fi
 
-            # UNSTABLE 状態（チェック実行中）の場合はリトライ
-            if printf '%s' "${MERGE_RESULT}" | grep -q 'is in unstable status'; then
-              if [ "${ATTEMPT}" -le "${MAX_RETRIES}" ]; then
-                HEAD_SHA=$(gh pr view "${PR_NUMBER}" --repo "${REPO}" --json headRefOid --jq '.headRefOid' 2>/dev/null || true)
-                IN_PROGRESS=0
-                if [ -n "${HEAD_SHA}" ]; then
-                  IN_PROGRESS=$(gh api "/repos/${REPO}/commits/${HEAD_SHA}/check-runs" \
-                    --jq '[.check_runs[] | select(.status == "in_progress" or .status == "queued")] | length' 2>/dev/null || echo "0")
-                  # 数値でない場合は0にフォールバック
-                  if ! printf '%s' "${IN_PROGRESS}" | grep -qE '^[0-9]+$'; then
-                    IN_PROGRESS=0
-                  fi
-                fi
-
-                if [ "${IN_PROGRESS}" -gt 0 ]; then
-                  printf '⏳ %d件のチェックが進行中です。%d秒後にリトライします... (%d/%d)\n' \
-                    "${IN_PROGRESS}" "${RETRY_INTERVAL}" "${ATTEMPT}" "${MAX_RETRIES}"
-                  sleep "${RETRY_INTERVAL}"
-                  continue
-                fi
-              fi
-
-              echo "⚠️ 自動マージの設定に失敗しました。手動でマージしてください。"
-              echo "詳細: ${MERGE_RESULT}"
-              exit 0
-            fi
-
-            # その他のエラー
             echo "⚠️ 自動マージの設定に失敗しました。手動でマージしてください。"
             echo "詳細: ${MERGE_RESULT}"
             exit 0
-          done
+          fi
 
-          echo "⚠️ タイムアウト: チェックの完了を待ちましたが自動マージの設定に失敗しました。手動でマージしてください。"
-          exit 0
+          printf '✅ PR #%s の自動マージが有効化されました\n' "${PR_NUMBER}"
+          echo ""
+          echo "📝 次のステップ:"
+          echo "  1. すべてのステータスチェックが成功"
+          echo "  2. → 自動的にSquash and Mergeが実行されます"
 

@@ -58,12 +58,12 @@ PRが承認されたときに自動的にマージを実行します。
 1. PR情報を表示（PR番号、タイトル、ベースブランチ、ヘッドブランチ、レビュアー）
 2. PRがDraft状態かチェック（Draft状態の場合は自動マージをスキップ）
 3. PR状態を表示（`mergeable`, `mergeStateStatus`）
-4. GraphQL `enablePullRequestAutoMerge` でauto-mergeを有効化（最大10回リトライ）
+4. GraphQL `enablePullRequestAutoMerge` でauto-mergeを有効化
 
 #### 注意事項
 
 - Draft PRは自動マージされません
 - `enablePullRequestAutoMerge` は PR が `CLEAN` 状態だと `Pull request is in clean status` エラーになるため、ワークフロー内で直接マージへフォールバックします
-- `enablePullRequestAutoMerge` は PR が `UNSTABLE` 状態（チェック実行中）だと `Pull request is in unstable status` エラーになるため、進行中チェックがある場合は30秒間隔で最大10回（約5分）リトライします。リトライ中にチェックが完了すると次の試行で自動マージが有効化されます
+- `enablePullRequestAutoMerge` は PR が `UNSTABLE` 状態（チェック実行中）だと失敗するため、進行中チェックがある場合は30秒間隔で最大10回（約5分）待機してから試行します
 - `.github/workflows/` 配下の変更を含むPRはリポジトリ設定やトークン権限の影響を受けるため、直接マージに失敗した場合はログの詳細を確認してください
 - 手動実行（`workflow_dispatch`）の場合は、Actions タブ → 「Auto Merge on Approval」→「Run workflow」からPR番号を入力して実行します
