@@ -59,8 +59,6 @@ PRが承認されたときに自動的にマージを実行します。
 2. PRがDraft状態かチェック（Draft状態の場合は自動マージをスキップ）
 3. PR状態を表示（`mergeable`, `mergeStateStatus`）
 4. GraphQL `enablePullRequestAutoMerge` でauto-mergeを有効化
-   - PRが `CLEAN` 以外の状態では auto-merge 設定を行い、条件充足後にGitHubが自動マージ（「Automatically delete head branches」設定によりブランチも削除）
-   - PRが `CLEAN` 状態では GitHub仕様上 auto-merge 設定ができないため、`gh pr merge --squash --delete-branch` で即時マージ＆ブランチ削除
 
 #### 注意事項
 
