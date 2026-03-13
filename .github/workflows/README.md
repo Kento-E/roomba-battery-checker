@@ -59,9 +59,6 @@ PRが承認されたときに自動的にマージを実行します。
 2. PRがDraft状態かチェック（Draft状態の場合は自動マージをスキップ）
 3. PR状態を表示（`mergeable`, `mergeStateStatus`）
 4. GraphQL `enablePullRequestAutoMerge` でauto-mergeを有効化
-   - PRが `CLEAN` 以外の状態では auto-merge 設定を行い、条件充足後に自動マージ
-   - PRが `CLEAN` 状態では GitHub仕様上 auto-merge 設定ができないため、`Squash and Merge` を即時実行
-5. マージ後、ブランチは auto-delete-branch.yml によって削除される
 
 #### 注意事項
 
@@ -69,30 +66,3 @@ PRが承認されたときに自動的にマージを実行します。
 - `enablePullRequestAutoMerge` は PR が `CLEAN` 状態だと `Pull request is in clean status` エラーになるため、ワークフロー内で直接マージへフォールバックします
 - `.github/workflows/` 配下の変更を含むPRはリポジトリ設定やトークン権限の影響を受けるため、直接マージに失敗した場合はログの詳細を確認してください
 - 手動実行（`workflow_dispatch`）の場合は、Actions タブ → 「Auto Merge on Approval」→「Run workflow」からPR番号を入力して実行します
-
-### 自動ブランチ削除 - auto-delete-branch.yml
-
-PRがマージされた後、ソースブランチを自動的に削除します。
-
-#### トリガー条件
-
-- **PRクローズ時**: PRがマージされてクローズされたとき（`pull_request: closed`）
-
-#### 必要な権限
-
-- `contents: write` - リポジトリのコンテンツを書き込む権限（ブランチ削除）
-
-#### 動作の流れ
-
-1. PRのブランチ情報を取得（ヘッドブランチ、ベースブランチ、PR番号）
-2. GitHub APIを使用してヘッドブランチを削除
-3. エラーハンドリング
-   - ブランチが既に削除されている場合: 情報メッセージを表示
-   - ブランチが保護されている場合: 情報メッセージを表示
-   - その他のエラー: エラーを表示して失敗
-
-#### 注意事項
-
-- このワークフローは `auto-merge.yml` と連携して動作します
-- `auto-merge.yml` は `enablePullRequestAutoMerge` でauto-mergeを有効化するのみで、ブランチ削除は行いません
-- このワークフローがPRマージ後のブランチ削除を担当します

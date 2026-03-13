@@ -69,7 +69,15 @@ jobs:
             # CLEAN 状態では enablePullRequestAutoMerge がエラーになるため、即時マージへフォールバック
             if printf '%s' "${MERGE_RESULT}" | grep -q 'is in clean status'; then
               echo "ℹ️ PRがCLEAN状態のため、Squash and Mergeを直接実行します..."
-              if ! gh pr merge "${PR_NUMBER}" --repo "${REPO}" --squash; then
+              # フォークPRの場合、ヘッドブランチの削除には失敗する可能性があるため、
+              # 同一リポジトリのPRのときだけ --delete-branch を付与する
+              IS_SAME_REPO=$(gh pr view "${PR_NUMBER}" --repo "${REPO}" --json isCrossRepository --jq '(.isCrossRepository | not)')
+              if [ "${IS_SAME_REPO}" = "true" ]; then
+                MERGE_CMD=(gh pr merge "${PR_NUMBER}" --repo "${REPO}" --squash --delete-branch)
+              else
+                MERGE_CMD=(gh pr merge "${PR_NUMBER}" --repo "${REPO}" --squash)
+              fi
+              if ! "${MERGE_CMD[@]}"; then
                 echo "⚠️ 直接マージに失敗しました。手動でマージしてください。"
                 exit 0
               fi
@@ -87,5 +95,4 @@ jobs:
           echo "📝 次のステップ:"
           echo "  1. すべてのステータスチェックが成功"
           echo "  2. → 自動的にSquash and Mergeが実行されます"
-          echo "  3. マージ後、ブランチが自動削除されます（auto-delete-branch.ymlによる）"
 
