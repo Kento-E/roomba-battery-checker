@@ -55,14 +55,13 @@ PRが承認されたときに自動的にマージを実行します。
 
 #### 動作の流れ
 
-1. PR情報を表示（PR番号、タイトル、ベースブランチ、ヘッドブランチ、レビュアー）
-2. PRがDraft状態かチェック（Draft状態の場合は自動マージをスキップ）
-3. PR状態を表示（`mergeable`, `mergeStateStatus`）
-4. GraphQL `enablePullRequestAutoMerge` でauto-mergeを有効化
+1. PR情報を表示（PR番号、タイトル、ベースブランチ、ヘッドブランチ）
+2. PRがマージ済みかチェック（マージ済みの場合はスキップ）
+3. PRがDraft状態かチェック（Draft状態の場合は自動マージをスキップ）
+4. `gh pr merge --squash --auto` でauto-mergeを有効化（必須チェック通過後に自動マージ）
 
 #### 注意事項
 
 - Draft PRは自動マージされません
-- `enablePullRequestAutoMerge` は PR が `CLEAN` 状態だと `Pull request is in clean status` エラーになるため、ワークフロー内で直接マージへフォールバックします
-- `.github/workflows/` 配下の変更を含むPRはリポジトリ設定やトークン権限の影響を受けるため、直接マージに失敗した場合はログの詳細を確認してください
+- フォークPRの場合、ヘッドブランチの削除には失敗する可能性があるため、同一リポジトリのPRのときだけ `--delete-branch` を付与します
 - 手動実行（`workflow_dispatch`）の場合は、Actions タブ → 「Auto Merge on Approval」→「Run workflow」からPR番号を入力して実行します
