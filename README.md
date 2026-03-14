@@ -53,19 +53,23 @@ GitHub ActionsのUIから手動でトリガーできます：
 
 ### 直接実行する場合
 
-ローカルで動作確認する場合は、必要な環境変数を設定して `npm run check-battery` を実行します：
+ローカルで動作確認する場合は、`.env` を作成してから `npm run check-battery` を実行します。
+
+1. `.env.example` をコピーして `.env` を作成
+2. `.env` の値を自分の環境に合わせて設定
+3. 実行
 
 ```bash
 cd /path/to/roomba-battery-checker
 npm install
-IROBOT_USERNAME=your_email@example.com \
-IROBOT_PASSWORD=yourpassword \
-SMTP_SERVER=smtp.example.com \
-SMTP_PORT=587 \
-SMTP_USER=your_email@example.com \
-SMTP_PASSWORD=yoursmtppassword \
-SEND_TO=recipient@example.com \
+cp .env.example .env
 npm run check-battery
+```
+
+メール通知なしでバッテリー取得だけを試す場合は、ローカル検証モードを使います。
+
+```bash
+npm run check-battery -l
 ```
 
 ## トラブルシューティング

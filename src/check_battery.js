@@ -2,11 +2,16 @@ const crypto = require('crypto');
 const axios = require('axios');
 const mqtt = require('mqtt');
 const nodemailer = require('nodemailer');
+require('dotenv').config();
 
 // 環境変数から設定を読み込み
 const IROBOT_USERNAME = process.env.IROBOT_USERNAME;
 const IROBOT_PASSWORD = process.env.IROBOT_PASSWORD;
 const DEBUG_LOG = process.env.DEBUG_LOG === 'true';
+const LOCAL_ONLY =
+  process.env.LOCAL_ONLY === 'true' ||
+  process.argv.includes('-l') ||
+  process.argv.includes('--local-only');
 
 // デバッグログ出力関数
 function debugLog(...args) {
@@ -36,19 +41,22 @@ if (!IROBOT_USERNAME || !IROBOT_PASSWORD) {
   process.exit(1);
 }
 
-if (!SMTP_SERVER || !SMTP_USER || !SMTP_PASSWORD || !SEND_TO) {
+if (!LOCAL_ONLY && (!SMTP_SERVER || !SMTP_USER || !SMTP_PASSWORD || !SEND_TO)) {
   console.error('エラー: SMTP設定が不完全です');
   console.error('必要な環境変数: SMTP_SERVER, SMTP_USER, SMTP_PASSWORD, SEND_TO');
   process.exit(1);
 }
 
 // SMTPポート番号の検証とデフォルト値設定
-const parsedSmtpPort = parseInt(SMTP_PORT, 10);
-if (Number.isNaN(parsedSmtpPort)) {
-  console.error('エラー: 無効なSMTPポート番号が設定されています:', SMTP_PORT);
-  process.exit(1);
+let SMTP_PORT_NUMBER = 587;
+if (!LOCAL_ONLY) {
+  const parsedSmtpPort = parseInt(SMTP_PORT, 10);
+  if (Number.isNaN(parsedSmtpPort)) {
+    console.error('エラー: 無効なSMTPポート番号が設定されています:', SMTP_PORT);
+    process.exit(1);
+  }
+  SMTP_PORT_NUMBER = parsedSmtpPort;
 }
-const SMTP_PORT_NUMBER = parsedSmtpPort;
 
 // メール送信関数
 async function sendNotification(batteryLevel, deviceName, statusMessage) {
@@ -229,9 +237,8 @@ async function loginGigya(endpoints) {
 
   if (body.errorCode !== 0) {
     throw new Error(
-      `Gigya認証エラー: ${
-        body.errorMessage ||
-        `errorCode=${body.errorCode}, statusCode=${body.statusCode}, callId=${body.callId}, time=${body.time}`
+      `Gigya認証エラー: ${body.errorMessage ||
+      `errorCode=${body.errorCode}, statusCode=${body.statusCode}, callId=${body.callId}, time=${body.time}`
       }`
     );
   }
@@ -855,7 +862,11 @@ async function getBatteryLevel() {
 
 // メイン処理
 async function main() {
-  console.log('Roombaバッテリーチェックを開始します（Cloud API経由）');
+  if (LOCAL_ONLY) {
+    console.log('Roombaバッテリー確認を開始します（ローカル検証モード）');
+  } else {
+    console.log('Roombaバッテリーチェックを開始します（Cloud API経由）');
+  }
 
   let batteryLevel, deviceName;
   try {
@@ -872,6 +883,12 @@ async function main() {
   }
 
   console.log(`デバイス: ${deviceName}, バッテリー残量: ${batteryLevel}%`);
+
+  if (LOCAL_ONLY) {
+    console.log('ローカル検証モードのため、メール通知は送信しません');
+    console.log('バッテリーチェック完了（ローカル検証モード）');
+    return;
+  }
 
   // バッテリーが100%でない場合、または強制通知フラグがONの場合はメール通知
   try {
