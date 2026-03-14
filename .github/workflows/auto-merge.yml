@@ -42,83 +42,36 @@ jobs:
         run: |
           printf 'PR #%s の自動マージを開始します...\n' "${PR_NUMBER}"
 
+          # PRがマージ済みかどうかをチェック
+          PR_STATE=$(gh pr view "${PR_NUMBER}" --repo "${REPO}" --json state --jq '.state')
+          if [ "$PR_STATE" = "MERGED" ]; then
+            echo "✅ このPRは既にマージ済みです。自動マージ処理をスキップします。"
+            exit 0
+          fi
+
           # PRがDraftかどうかをチェック
           IS_DRAFT=$(gh pr view "${PR_NUMBER}" --repo "${REPO}" --json isDraft --jq '.isDraft')
-
           if [ "$IS_DRAFT" = "true" ]; then
             echo "⚠️ このPRはDraft状態です。Draft状態のPRは自動マージされません。"
             echo "Ready for reviewに変更してから再度Approveしてください。"
             exit 0
           fi
 
-          # PR状態を確認
-          echo "📋 PR状態を確認中..."
-          gh pr view "${PR_NUMBER}" --repo "${REPO}" --json mergeable,mergeStateStatus --jq '.mergeable,.mergeStateStatus'
-
-          # 自動マージを有効化
-          # - gh pr merge --auto は状態によって直接マージAPIを呼ぶため、
-          #   .github/workflows/ 配下を含むPRで権限エラーになることがある
-          # - enablePullRequestAutoMerge を直接呼び、auto-merge設定のみ行う
-          # - UNSTABLE状態（チェック実行中）の場合は最大10回（30秒間隔）待機してから試行する
-          echo "🔄 自動マージを設定中..."
-          PR_NODE_ID=$(gh api "/repos/${REPO}/pulls/${PR_NUMBER}" --jq '.node_id')
-
-          # UNSTABLE状態（チェック実行中）の場合は最大10回待機してからAuto-merge APIを呼ぶ
-          MAX_RETRIES=10
-          RETRY_INTERVAL=30
-          for ATTEMPT in $(seq 1 ${MAX_RETRIES}); do
-            MERGE_STATE=$(gh pr view "${PR_NUMBER}" --repo "${REPO}" --json mergeStateStatus --jq '.mergeStateStatus' 2>/dev/null || echo "UNKNOWN")
-            if [ "${MERGE_STATE}" != "UNSTABLE" ]; then
-              break
-            fi
-            HEAD_SHA=$(gh pr view "${PR_NUMBER}" --repo "${REPO}" --json headRefOid --jq '.headRefOid' 2>/dev/null || true)
-            IN_PROGRESS=0
-            if [ -n "${HEAD_SHA}" ]; then
-              IN_PROGRESS=$(gh api "/repos/${REPO}/commits/${HEAD_SHA}/check-runs" \
-                --jq '[.check_runs[] | select(.status == "in_progress" or .status == "queued")] | length' 2>/dev/null || echo "0")
-              if ! printf '%s' "${IN_PROGRESS}" | grep -qE '^[0-9]+$'; then
-                IN_PROGRESS=0
-              fi
-            fi
-            if [ "${IN_PROGRESS}" -eq 0 ]; then
-              break
-            fi
-            printf '⏳ %d件のチェックが進行中です。%d秒後にリトライします... (%d/%d)\n' \
-              "${IN_PROGRESS}" "${RETRY_INTERVAL}" "${ATTEMPT}" "${MAX_RETRIES}"
-            sleep "${RETRY_INTERVAL}"
-          done
-
-          if ! MERGE_RESULT=$(gh api graphql \
-            -f query='mutation($pullRequestId:ID!,$mergeMethod:PullRequestMergeMethod!){enablePullRequestAutoMerge(input:{pullRequestId:$pullRequestId,mergeMethod:$mergeMethod}){pullRequest{number title}}}' \
-            -F pullRequestId="${PR_NODE_ID}" \
-            -F mergeMethod="SQUASH" 2>&1); then
-            # CLEAN 状態では enablePullRequestAutoMerge がエラーになるため、即時マージへフォールバック
-            if printf '%s' "${MERGE_RESULT}" | grep -q 'is in clean status'; then
-              echo "ℹ️ PRがCLEAN状態のため、Squash and Mergeを直接実行します..."
-              # フォークPRの場合、ヘッドブランチの削除には失敗する可能性があるため、
-              # 同一リポジトリのPRのときだけ --delete-branch を付与する
-              IS_SAME_REPO=$(gh pr view "${PR_NUMBER}" --repo "${REPO}" --json isCrossRepository --jq '(.isCrossRepository | not)')
-              if [ "${IS_SAME_REPO}" = "true" ]; then
-                MERGE_CMD=(gh pr merge "${PR_NUMBER}" --repo "${REPO}" --squash --delete-branch)
-              else
-                MERGE_CMD=(gh pr merge "${PR_NUMBER}" --repo "${REPO}" --squash)
-              fi
-              if ! "${MERGE_CMD[@]}"; then
-                echo "⚠️ 直接マージに失敗しました。手動でマージしてください。"
-                exit 0
-              fi
-              printf '✅ PR #%s をSquash and Mergeしました\n' "${PR_NUMBER}"
-              exit 0
-            fi
-
-            echo "⚠️ 自動マージの設定に失敗しました。手動でマージしてください。"
-            echo "詳細: ${MERGE_RESULT}"
-            exit 0
+          # gh pr merge --auto はチェック待ちなら auto-merge queue に積み、
+          # 即マージ可能（CLEAN）なら直接マージする。
+          # --delete-branch はフォークPRで失敗するため同一リポジトリの場合のみ付与する。
+          IS_SAME_REPO=$(gh pr view "${PR_NUMBER}" --repo "${REPO}" --json isCrossRepository --jq '(.isCrossRepository | not)')
+          if [ "${IS_SAME_REPO}" = "true" ]; then
+            MERGE_CMD=(gh pr merge "${PR_NUMBER}" --repo "${REPO}" --squash --auto --delete-branch)
+          else
+            MERGE_CMD=(gh pr merge "${PR_NUMBER}" --repo "${REPO}" --squash --auto)
           fi
 
-          printf '✅ PR #%s の自動マージが有効化されました\n' "${PR_NUMBER}"
-          echo ""
-          echo "📝 次のステップ:"
-          echo "  1. すべてのステータスチェックが成功"
-          echo "  2. → 自動的にSquash and Mergeが実行されます"
+          if ! "${MERGE_CMD[@]}"; then
+            echo "⚠️ 自動マージの設定に失敗しました。手動でマージしてください。"
+            exit 1
+          fi
+
+          printf '✅ PR #%s の自動マージを有効化しました\n' "${PR_NUMBER}"
+          echo "必須チェックが完了次第、自動的にマージされます"
 
