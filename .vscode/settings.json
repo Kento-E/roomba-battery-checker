@@ -5,6 +5,12 @@
     "git add": true,
     "git commit": true,
     "git push": true,
-    "git ls-tree": true
+    "git ls-tree": true,
+    "gh": true,
+    "git fetch": true,
+    "C-c": true,
+    "q": true,
+    "git checkout": true,
+    "git cherry-pick": true
   }
 }
