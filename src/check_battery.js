@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const axios = require('axios');
+const mqtt = require('mqtt');
 const nodemailer = require('nodemailer');
 require('dotenv').config();
 
@@ -33,6 +34,34 @@ const SMTP_PASSWORD = process.env.SMTP_PASSWORD;
 const SEND_FROM = process.env.SEND_FROM;
 const SEND_TO = process.env.SEND_TO;
 const FORCE_NOTIFICATION = process.env.FORCE_NOTIFICATION === 'true';
+const RUN_CONTINUOUS =
+  process.env.RUN_CONTINUOUS === 'true' ||
+  process.argv.includes('-d') ||
+  process.argv.includes('--daemon');
+
+const CHECK_INTERVAL_MINUTES_RAW = process.env.CHECK_INTERVAL_MINUTES || '30';
+const NOTIFICATION_COOLDOWN_MINUTES_RAW = process.env.NOTIFICATION_COOLDOWN_MINUTES || '180';
+
+const CHECK_INTERVAL_MINUTES = Number.parseInt(CHECK_INTERVAL_MINUTES_RAW, 10);
+if (RUN_CONTINUOUS && (!Number.isFinite(CHECK_INTERVAL_MINUTES) || CHECK_INTERVAL_MINUTES < 1)) {
+  console.error(
+    `エラー: CHECK_INTERVAL_MINUTESは1以上の整数を指定してください: ${CHECK_INTERVAL_MINUTES_RAW}`
+  );
+  process.exit(1);
+}
+const CHECK_INTERVAL_MS = CHECK_INTERVAL_MINUTES * 60 * 1000;
+
+const NOTIFICATION_COOLDOWN_MINUTES = Number.parseInt(NOTIFICATION_COOLDOWN_MINUTES_RAW, 10);
+if (
+  RUN_CONTINUOUS &&
+  (!Number.isFinite(NOTIFICATION_COOLDOWN_MINUTES) || NOTIFICATION_COOLDOWN_MINUTES < 1)
+) {
+  console.error(
+    `エラー: NOTIFICATION_COOLDOWN_MINUTESは1以上の整数を指定してください: ${NOTIFICATION_COOLDOWN_MINUTES_RAW}`
+  );
+  process.exit(1);
+}
+const NOTIFICATION_COOLDOWN_MS = NOTIFICATION_COOLDOWN_MINUTES * 60 * 1000;
 
 // 環境変数のチェック
 if (!IROBOT_USERNAME || !IROBOT_PASSWORD) {
@@ -199,6 +228,9 @@ async function discoverEndpoints() {
     // mqttAts は ATS 対応 IoT エンドポイント。旧形式の deployment では mqtt フィールドにフォールバック
     mqttAts: deployment.mqttAts ?? deployment.mqtt,
     awsRegion: deployment.awsRegion,
+    // irbtTopics は iRobot 固有の MQTT トピックプレフィックス（例: "v011-irbthbu"）
+    // v4 Roomba はこのプレフィックス配下のトピックでロボット状態（バッテリー等）をパブリッシュする
+    irbtTopics: deployment.irbtTopics ?? null,
   };
 }
 
@@ -233,8 +265,9 @@ async function loginGigya(endpoints) {
 
   if (body.errorCode !== 0) {
     throw new Error(
-      `Gigya認証エラー: ${body.errorMessage ||
-      `errorCode=${body.errorCode}, statusCode=${body.statusCode}, callId=${body.callId}, time=${body.time}`
+      `Gigya認証エラー: ${
+        body.errorMessage ||
+        `errorCode=${body.errorCode}, statusCode=${body.statusCode}, callId=${body.callId}, time=${body.time}`
       }`
     );
   }
@@ -307,6 +340,10 @@ async function loginIRobot(endpoints, gigyaCredentials) {
 // 指定時間（ミリ秒）待機する関数
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function getErrorMessage(error) {
+  return error instanceof Error ? error.message : String(error);
 }
 
 // AWS IoT Device Shadow からロボット状態を取得する関数
@@ -403,7 +440,14 @@ async function getDeviceShadowWithRetry(
 // AWS IoT カスタム認証者（Custom Authorizer）経由でDevice Shadowを取得する関数（HTTP REST - フォールバック）
 // iot_token / iot_signature / iot_authorizer_name を使ってAWS IoT CoreのHTTP REST APIにアクセスする
 // 注意: この方法は Lambda 認証者ポリシーに iot:GetThingShadow が含まれている場合のみ機能する
-async function getDeviceShadowViaCustomAuth(endpoints, robotId, iotToken, iotSignature, iotAuthorizerName, iotClientId) {
+async function getDeviceShadowViaCustomAuth(
+  endpoints,
+  robotId,
+  iotToken,
+  iotSignature,
+  iotAuthorizerName,
+  iotClientId
+) {
   if (!endpoints.mqttAts) {
     throw new Error('IoTエンドポイント情報がありません');
   }
@@ -456,10 +500,9 @@ async function getDeviceShadowViaCustomAuth(endpoints, robotId, iotToken, iotSig
           headers: error.response?.headers,
         });
       }
-      throw new Error(
-        `IoTカスタム認証者経由のDevice Shadow取得に失敗しました（HTTP ${status}）`,
-        { cause: error }
-      );
+      throw new Error(`IoTカスタム認証者経由のDevice Shadow取得に失敗しました（HTTP ${status}）`, {
+        cause: error,
+      });
     }
     throw new Error(
       `IoTカスタム認証者経由のDevice Shadow取得に失敗しました: ${error instanceof Error ? error.message : String(error)}`,
@@ -468,7 +511,10 @@ async function getDeviceShadowViaCustomAuth(endpoints, robotId, iotToken, iotSig
   }
 
   if (DEBUG_LOG) {
-    debugLog('IoTカスタム認証者経由Device Shadowレスポンス:', JSON.stringify(response.data, null, 2));
+    debugLog(
+      'IoTカスタム認証者経由Device Shadowレスポンス:',
+      JSON.stringify(response.data, null, 2)
+    );
   }
 
   return response.data;
@@ -517,10 +563,9 @@ async function getDeviceShadowViaHttpBaseAuth(endpoints, robotId, credentials) {
           headers: error.response?.headers,
         });
       }
-      throw new Error(
-        `httpBaseAuth SigV4経由のDevice Shadow取得に失敗しました（HTTP ${status}）`,
-        { cause: error }
-      );
+      throw new Error(`httpBaseAuth SigV4経由のDevice Shadow取得に失敗しました（HTTP ${status}）`, {
+        cause: error,
+      });
     }
     throw new Error(
       `httpBaseAuth SigV4経由のDevice Shadow取得に失敗しました: ${error instanceof Error ? error.message : String(error)}`,
@@ -529,10 +574,175 @@ async function getDeviceShadowViaHttpBaseAuth(endpoints, robotId, credentials) {
   }
 
   if (DEBUG_LOG) {
-    debugLog('httpBaseAuth SigV4経由Device Shadowレスポンス:', JSON.stringify(response.data, null, 2));
+    debugLog(
+      'httpBaseAuth SigV4経由Device Shadowレスポンス:',
+      JSON.stringify(response.data, null, 2)
+    );
   }
 
   return response.data;
+}
+
+// MQTT over WebSocket（IoTカスタム認証者）経由でDevice Shadowを取得する関数
+// HTTPのDevice Shadow RESTは403となるが、MQTTではカスタム認証者のポリシーによりアクセス可能
+async function getDeviceShadowViaMqttWebSocket(
+  endpoints,
+  robotId,
+  iotToken,
+  iotSignature,
+  iotAuthorizerName,
+  iotClientId
+) {
+  if (!endpoints.mqttAts) {
+    throw new Error('IoTエンドポイント情報がありません');
+  }
+  if (!iotToken || !iotSignature || !iotAuthorizerName) {
+    throw new Error(
+      `IoTカスタム認証情報が不足しています: iotToken=${!!iotToken}, iotSignature=${!!iotSignature}, iotAuthorizerName=${!!iotAuthorizerName}`
+    );
+  }
+
+  // WebSocketアップグレードリクエストのヘッダーでカスタム認証者情報を渡す
+  // iRobotカスタム認証者は x-irobot-auth ヘッダーをトークンとして使用する
+  // （標準の x-amz-customauthorizer-token ではない点に注意）
+  const wsUrl = `wss://${endpoints.mqttAts}:443/mqtt`;
+  const wsHeaders = {
+    'X-Amz-CustomAuthorizer-Name': iotAuthorizerName,
+    'X-Amz-CustomAuthorizer-Signature': iotSignature,
+    'x-irobot-auth': iotToken,
+    'User-Agent': 'iRobot/2.17.1 Android/28',
+  };
+
+  const clientId = iotClientId ?? `app-${IROBOT_APP_ID}-${crypto.randomBytes(4).toString('hex')}`;
+
+  if (DEBUG_LOG) {
+    debugLog('MQTT WebSocket経由Device Shadow取得リクエスト:', {
+      endpoint: endpoints.mqttAts,
+      clientId,
+      robotId,
+      authorizerName: iotAuthorizerName,
+      irbtTopics: endpoints.irbtTopics ?? '(なし)',
+      // ヘッダー値には認証情報が含まれるためキー名のみ出力
+      wsHeaderKeys: Object.keys(wsHeaders),
+    });
+  }
+
+  return new Promise((resolve, reject) => {
+    const client = mqtt.connect(wsUrl, {
+      clientId,
+      clean: true,
+      reconnectPeriod: 0,
+      connectTimeout: 10000,
+      keepalive: 30,
+      wsOptions: { headers: wsHeaders },
+    });
+
+    // ロボットがアクティブ時にリアルタイムで状態をプッシュするトピック
+    // Y311060 など新しい Roomba モデルは batPct を永続 Shadow に保存せず
+    // 状態遷移時（充電中→稼働中など）に update/accepted へプッシュする
+    const updateAcceptedTopic = `$aws/things/${robotId}/shadow/update/accepted`;
+    // iRobot 固有のテレメトリトピック（例: "v007-irbthbu"）
+    // v4 Roomba はこのプレフィックス配下のトピックでロボット状態（バッテリー等）をパブリッシュする
+    // kilianp07/roomba-v4 の v4-api.md で `irbtTopics` フィールドとして確認
+    const irbtTopicWildcard = endpoints.irbtTopics ? `${endpoints.irbtTopics}/${robotId}/#` : null;
+
+    let settled = false;
+    // ロボットが定期的にテレメトリをパブリッシュするまで待つ時間として 30 秒を確保する
+    const MQTT_TIMEOUT_MS = 30000;
+    const timer = setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        client.end(true);
+        reject(
+          new Error(`MQTT batPct が見つかりませんでした（${MQTT_TIMEOUT_MS / 1000}秒タイムアウト）`)
+        );
+      }
+    }, MQTT_TIMEOUT_MS);
+
+    function done(err, result) {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      client.end(true);
+      if (err) reject(err);
+      else resolve(result);
+    }
+
+    client.on('connect', () => {
+      debugLog('MQTT接続成功');
+      // $aws/things/* へのパブリッシュはカスタム認証者ポリシーにより未認可切断を引き起こす可能性がある
+      // そのためパッシブ受信のみとし、更新通知トピックと irbt テレメトリトピックのみ購読する
+      const topicsToSubscribe = [updateAcceptedTopic];
+      if (irbtTopicWildcard) {
+        topicsToSubscribe.push(irbtTopicWildcard);
+      } else {
+        console.warn(
+          'MQTT: irbtTopics が設定されていません。shadow/update/accepted のみ購読します'
+        );
+      }
+      client.subscribe(topicsToSubscribe, { qos: 0 }, (err) => {
+        if (err) {
+          done(
+            new Error(`MQTT購読に失敗しました: ${err instanceof Error ? err.message : String(err)}`)
+          );
+          return;
+        }
+        // パッシブ受信のみ: shadow GET は送信しない
+        // （未認可パブリッシュがサーバー側切断を引き起こす可能性があるため）
+        debugLog('MQTT購読完了。ロボットの状態更新を待機中...');
+      });
+    });
+
+    client.on('message', (topic, message) => {
+      try {
+        const payload = JSON.parse(message.toString());
+        if (DEBUG_LOG) {
+          debugLog(`MQTT メッセージ受信 (${topic}):`, JSON.stringify(payload, null, 2));
+        }
+        // Shadow 形式: { state: { reported: { batPct: N } } }
+        // irbt テレメトリ形式: { batPct: N } または { state: { batPct: N } } の可能性がある
+        const batPct =
+          payload?.state?.reported?.batPct ?? payload?.state?.batPct ?? payload?.batPct;
+        if (batPct != null) {
+          // batPct が含まれるメッセージが届いたので解決
+          // Shadow 形式に統一して返す
+          const shadow =
+            payload?.state?.reported != null
+              ? payload
+              : { state: { reported: { ...payload, batPct } } };
+          done(null, shadow);
+        } else if (DEBUG_LOG) {
+          debugLog(
+            `MQTT (${topic}) に batPct なし。他のトピックで引き続き待機中...`,
+            JSON.stringify(payload).substring(0, 200)
+          );
+        }
+      } catch (parseErr) {
+        done(
+          new Error(
+            `MQTTメッセージのJSONパースに失敗しました: ${parseErr instanceof Error ? parseErr.message : String(parseErr)}`
+          )
+        );
+      }
+    });
+
+    client.on('error', (err) => {
+      done(new Error(`MQTT接続エラー: ${err instanceof Error ? err.message : String(err)}`));
+    });
+
+    // 予期しない切断（認証エラーによるサーバー側クローズなど）を検知する
+    client.on('close', () => {
+      if (!settled) {
+        done(new Error('MQTT接続が切断されました（認証エラーまたはネットワーク障害）'));
+      }
+    });
+
+    client.on('offline', () => {
+      if (!settled) {
+        done(new Error('MQTTクライアントがオフラインになりました'));
+      }
+    });
+  });
 }
 
 // Cloud APIからバッテリー残量とデバイス名を取得する関数
@@ -544,7 +754,8 @@ async function getBatteryLevel() {
   const gigyaCredentials = await loginGigya(endpoints);
 
   console.log('ロボット情報を取得中...');
-  const { robots, credentials, iotToken, iotSignature, iotAuthorizerName, iotClientId } = await loginIRobot(endpoints, gigyaCredentials);
+  const { robots, credentials, iotToken, iotSignature, iotAuthorizerName, iotClientId } =
+    await loginIRobot(endpoints, gigyaCredentials);
 
   // 最初のロボットを使用
   const robotIds = Object.keys(robots);
@@ -564,11 +775,47 @@ async function getBatteryLevel() {
 
   // ログインレスポンスに batPct がない場合、Device Shadow から取得
   if (batteryLevel == null) {
-    // 試行1: httpBaseAuth経由（SigV4署名・execute-api・最優先）
+    // 試行1: MQTT over WebSocket（IoTカスタム認証者経由）
+    // HTTPのDevice Shadow RESTはすべて403になるためMQTTが最も確実な方法
+    if (iotToken && iotSignature && iotAuthorizerName && endpoints.mqttAts) {
+      try {
+        console.log('Device Shadow経由でバッテリー残量を取得中（MQTT WebSocket）...');
+        const shadow = await getDeviceShadowViaMqttWebSocket(
+          endpoints,
+          robotId,
+          iotToken,
+          iotSignature,
+          iotAuthorizerName,
+          iotClientId
+        );
+        batteryLevel = shadow?.state?.reported?.batPct;
+        if (batteryLevel != null) {
+          return { batteryLevel, deviceName };
+        }
+      } catch (mqttError) {
+        console.warn(
+          `MQTT WebSocket経由での取得に失敗（次の方法を試みます）: ${mqttError instanceof Error ? mqttError.message : String(mqttError)}`
+        );
+        if (DEBUG_LOG) {
+          debugLog('MQTT WebSocketエラー詳細:', mqttError);
+        }
+      }
+    } else if (DEBUG_LOG) {
+      debugLog('MQTT WebSocketスキップ:', {
+        hasIotToken: !!iotToken,
+        hasIotSignature: !!iotSignature,
+        hasIotAuthorizerName: !!iotAuthorizerName,
+        hasMqttAts: !!endpoints.mqttAts,
+      });
+    }
+
+    // 試行2: httpBaseAuth経由（SigV4署名・execute-api）
     // auth2.prod.iot.irobotapi.com は AWS API Gateway のため execute-api で SigV4 署名
     if (credentials && endpoints.httpBaseAuth) {
       try {
-        console.log('Device Shadow経由でバッテリー残量を取得中（httpBaseAuth SigV4 execute-api）...');
+        console.log(
+          'Device Shadow経由でバッテリー残量を取得中（httpBaseAuth SigV4 execute-api）...'
+        );
         const shadow = await getDeviceShadowViaHttpBaseAuth(endpoints, robotId, credentials);
         batteryLevel = shadow?.state?.reported?.batPct;
         if (batteryLevel != null) {
@@ -583,16 +830,24 @@ async function getBatteryLevel() {
         }
       }
     } else if (DEBUG_LOG) {
-      debugLog('httpBaseAuth SigV4スキップ:', { hasCredentials: !!credentials, hasHttpBaseAuth: !!endpoints.httpBaseAuth });
+      debugLog('httpBaseAuth SigV4スキップ:', {
+        hasCredentials: !!credentials,
+        hasHttpBaseAuth: !!endpoints.httpBaseAuth,
+      });
     }
 
-    // 試行2: IoTカスタム認証者経由（HTTP REST - フォールバック）
+    // 試行3: IoTカスタム認証者経由（HTTP REST - フォールバック）
     // mqttAtsエンドポイントにx-amz-customauthorizer-*ヘッダーでアクセス
     if (iotToken && iotSignature && iotAuthorizerName) {
       try {
         console.log('Device Shadow経由でバッテリー残量を取得中（IoTカスタム認証者 HTTP）...');
         const shadow = await getDeviceShadowViaCustomAuth(
-          endpoints, robotId, iotToken, iotSignature, iotAuthorizerName, iotClientId
+          endpoints,
+          robotId,
+          iotToken,
+          iotSignature,
+          iotAuthorizerName,
+          iotClientId
         );
         batteryLevel = shadow?.state?.reported?.batPct;
         if (batteryLevel != null) {
@@ -608,53 +863,87 @@ async function getBatteryLevel() {
       }
     }
 
-    // 試行3: AWS IoT直接アクセス（iotdata SigV4）
+    // 試行4: AWS IoT直接アクセス（iotdata SigV4）
     if (credentials) {
       console.log('Device Shadow経由でバッテリー残量を取得中（AWS IoT SigV4）...');
       try {
         const shadow = await getDeviceShadowWithRetry(endpoints, robotId, credentials);
         batteryLevel = shadow?.state?.reported?.batPct;
       } catch (awsIotError) {
-        throw new Error(
-          `Device Shadow取得をすべての方法で試みましたが失敗しました: ${awsIotError instanceof Error ? awsIotError.message : String(awsIotError)}`,
-          { cause: awsIotError }
+        // すべての方法が失敗した場合は警告を出して null を返す（認証エラーの可能性が高い）
+        console.warn(
+          `Device Shadow取得をすべての方法で試みましたが失敗しました（認証エラーまたは一時的な接続不可）: ${awsIotError instanceof Error ? awsIotError.message : String(awsIotError)}`
         );
+        if (DEBUG_LOG) {
+          debugLog('AWS IoT SigV4エラー詳細:', awsIotError);
+        }
+        return { batteryLevel: null, deviceName };
       }
     } else {
-      throw new Error('Device Shadowの取得に必要な認証情報がありません');
+      console.warn('Device Shadowの取得に必要な認証情報がありません');
+      return { batteryLevel: null, deviceName };
     }
   }
 
   if (batteryLevel === undefined || batteryLevel === null) {
-    console.warn(
-      `警告: ${deviceName} のバッテリー情報を取得できませんでした。ロボットがオフラインの可能性があります。`
-    );
+    console.warn(`警告: ${deviceName} のバッテリー情報を取得できませんでした（全試行失敗）。`);
     return { batteryLevel: null, deviceName };
   }
 
   return { batteryLevel, deviceName };
 }
 
-// メイン処理
-async function main() {
-  if (LOCAL_ONLY) {
-    console.log('Roombaバッテリー確認を開始します（ローカル検証モード）');
-  } else {
-    console.log('Roombaバッテリーチェックを開始します（Cloud API経由）');
+function shouldSendNotificationInContinuousMode(batteryLevel, state) {
+  if (batteryLevel >= 100 && !FORCE_NOTIFICATION) {
+    return {
+      shouldSend: false,
+      reason: `バッテリー残量は${batteryLevel}%です。通知は不要です`,
+    };
   }
 
-  let batteryLevel, deviceName;
+  const now = Date.now();
+  if (state.lastNotificationAt == null) {
+    return {
+      shouldSend: true,
+      reason:
+        batteryLevel < 100
+          ? `バッテリー残量が${batteryLevel}%です。メール通知を送信します`
+          : '強制通知フラグがONです。バッテリー残量100%ですが通知を送信します（疎通確認）',
+    };
+  }
+
+  const elapsedMs = now - state.lastNotificationAt;
+  if (elapsedMs >= NOTIFICATION_COOLDOWN_MS) {
+    return {
+      shouldSend: true,
+      reason:
+        batteryLevel < 100
+          ? `バッテリー残量が${batteryLevel}%です。メール通知を送信します`
+          : '強制通知フラグがONです。バッテリー残量100%ですが通知を送信します（疎通確認）',
+    };
+  }
+
+  const nextAllowedMinutes = Math.ceil((NOTIFICATION_COOLDOWN_MS - elapsedMs) / 60000);
+  return {
+    shouldSend: false,
+    reason: `前回通知からクールダウン中のため通知をスキップします（残り約${nextAllowedMinutes}分）`,
+  };
+}
+
+async function runBatteryCheckOnce(state) {
+  let batteryLevel;
+  let deviceName;
+
   try {
     ({ batteryLevel, deviceName } = await getBatteryLevel());
   } catch (error) {
-    console.error('エラー:', error.message);
-    process.exit(1);
+    console.error('エラー:', getErrorMessage(error));
+    return false;
   }
 
-  // ロボットがオフラインでバッテリー情報が取得できない場合はスキップ
   if (batteryLevel === null) {
-    console.log('バッテリーチェック完了（ロボットオフラインのためスキップ）');
-    return;
+    console.log('バッテリーチェック完了（バッテリー情報取得失敗のためスキップ）');
+    return true;
   }
 
   console.log(`デバイス: ${deviceName}, バッテリー残量: ${batteryLevel}%`);
@@ -662,12 +951,22 @@ async function main() {
   if (LOCAL_ONLY) {
     console.log('ローカル検証モードのため、メール通知は送信しません');
     console.log('バッテリーチェック完了（ローカル検証モード）');
-    return;
+    return true;
   }
 
-  // バッテリーが100%でない場合、または強制通知フラグがONの場合はメール通知
   try {
-    if (batteryLevel < 100) {
+    if (RUN_CONTINUOUS) {
+      const decision = shouldSendNotificationInContinuousMode(batteryLevel, state);
+      console.log(decision.reason);
+      if (decision.shouldSend) {
+        const statusMessage =
+          batteryLevel < 100
+            ? 'バッテリーが100%ではないため、清掃スケジュールの実行に影響する可能性があります。\n充電を確認してください。'
+            : 'バッテリーは満充電されています。\nこのメールは疎通確認のための強制通知です。';
+        await sendNotification(batteryLevel, deviceName, statusMessage);
+        state.lastNotificationAt = Date.now();
+      }
+    } else if (batteryLevel < 100) {
       console.log(`バッテリー残量が${batteryLevel}%です。メール通知を送信します`);
       const statusMessage =
         'バッテリーが100%ではないため、清掃スケジュールの実行に影響する可能性があります。\n充電を確認してください。';
@@ -681,11 +980,61 @@ async function main() {
       console.log(`バッテリー残量は${batteryLevel}%です。通知は不要です`);
     }
   } catch (error) {
-    console.error('エラーが発生しました:', error);
-    process.exit(1);
+    console.error('エラーが発生しました:', getErrorMessage(error));
+    return false;
   }
 
   console.log('バッテリーチェック完了');
+  return true;
+}
+
+async function runContinuousMode() {
+  console.log('Roombaバッテリーチェックを開始します（常時実行モード）');
+  console.log(
+    `実行間隔: ${CHECK_INTERVAL_MINUTES}分, 通知クールダウン: ${NOTIFICATION_COOLDOWN_MINUTES}分`
+  );
+
+  const state = { lastNotificationAt: null };
+  let stopRequested = false;
+
+  function requestStop(signalName) {
+    stopRequested = true;
+    console.log(`${signalName} を受信しました。現在の処理完了後に終了します...`);
+  }
+
+  process.on('SIGINT', () => requestStop('SIGINT'));
+  process.on('SIGTERM', () => requestStop('SIGTERM'));
+
+  while (!stopRequested) {
+    await runBatteryCheckOnce(state);
+    if (stopRequested) {
+      break;
+    }
+    console.log(`${CHECK_INTERVAL_MINUTES}分待機します...`);
+    await sleep(CHECK_INTERVAL_MS);
+  }
+
+  console.log('常時実行モードを終了します');
+}
+
+// メイン処理
+async function main() {
+  if (RUN_CONTINUOUS) {
+    await runContinuousMode();
+    return;
+  }
+
+  if (LOCAL_ONLY) {
+    console.log('Roombaバッテリー確認を開始します（ローカル検証モード）');
+  } else {
+    console.log('Roombaバッテリーチェックを開始します（Cloud API経由）');
+  }
+
+  const state = { lastNotificationAt: null };
+  const success = await runBatteryCheckOnce(state);
+  if (!success) {
+    process.exit(1);
+  }
 }
 
 main();

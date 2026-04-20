@@ -28,21 +28,21 @@
 
 ## コード品質
 
-### リンター実行（必須）
+### リンター・フォーマッター実行（必須）
 
-**コード変更後は必ずリンターを実行してコミットすること**
+**コード変更後は必ず以下のコマンドを実行してからコミットすること**
 
 ```bash
-# リンター実行（推奨）
-npm run lint
-
-# 自動修正（推奨）
+# ESLint + Prettier を一括実行（推奨）
 npm run lint:fix
 
-# 個別ファイルの場合はnpxで直接実行
-npx eslint src/check_battery.js
-npx prettier --write src/check_battery.js
+# lint:fix が使えない場合は個別実行
+npx eslint src/ --fix
+npx prettier --write src/
 ```
+
+> **Prettier は毎回必ず実行すること。** インデントや引用符など書式の不整合があると
+> レビューノイズになるため、変更のたびに `npm run lint:fix` で整形してコミットすること。
 
 ### 基本ルール
 
@@ -103,7 +103,8 @@ npx prettier --write src/
 - [ ] 未使用の変数・importを削除したか
 - [ ] 変数名は明確か（camelCase使用）
 - [ ] 機密情報をコードに含めていないか
-- [ ] リンターでエラーがないか確認したか
+- [ ] リンターでエラーがないか確認したか（`npm run lint:fix` を実行したか）
+- [ ] Prettierでフォーマットを整形したか（`npm run lint:fix` に含まれる）
 
 ---
 
