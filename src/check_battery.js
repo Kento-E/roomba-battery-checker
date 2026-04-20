@@ -34,6 +34,34 @@ const SMTP_PASSWORD = process.env.SMTP_PASSWORD;
 const SEND_FROM = process.env.SEND_FROM;
 const SEND_TO = process.env.SEND_TO;
 const FORCE_NOTIFICATION = process.env.FORCE_NOTIFICATION === 'true';
+const RUN_CONTINUOUS =
+  process.env.RUN_CONTINUOUS === 'true' ||
+  process.argv.includes('-d') ||
+  process.argv.includes('--daemon');
+
+const CHECK_INTERVAL_MINUTES_RAW = process.env.CHECK_INTERVAL_MINUTES || '30';
+const NOTIFICATION_COOLDOWN_MINUTES_RAW = process.env.NOTIFICATION_COOLDOWN_MINUTES || '180';
+
+const CHECK_INTERVAL_MINUTES = Number.parseInt(CHECK_INTERVAL_MINUTES_RAW, 10);
+if (RUN_CONTINUOUS && (!Number.isFinite(CHECK_INTERVAL_MINUTES) || CHECK_INTERVAL_MINUTES < 1)) {
+  console.error(
+    `エラー: CHECK_INTERVAL_MINUTESは1以上の整数を指定してください: ${CHECK_INTERVAL_MINUTES_RAW}`
+  );
+  process.exit(1);
+}
+const CHECK_INTERVAL_MS = CHECK_INTERVAL_MINUTES * 60 * 1000;
+
+const NOTIFICATION_COOLDOWN_MINUTES = Number.parseInt(NOTIFICATION_COOLDOWN_MINUTES_RAW, 10);
+if (
+  RUN_CONTINUOUS &&
+  (!Number.isFinite(NOTIFICATION_COOLDOWN_MINUTES) || NOTIFICATION_COOLDOWN_MINUTES < 1)
+) {
+  console.error(
+    `エラー: NOTIFICATION_COOLDOWN_MINUTESは1以上の整数を指定してください: ${NOTIFICATION_COOLDOWN_MINUTES_RAW}`
+  );
+  process.exit(1);
+}
+const NOTIFICATION_COOLDOWN_MS = NOTIFICATION_COOLDOWN_MINUTES * 60 * 1000;
 
 // 環境変数のチェック
 if (!IROBOT_USERNAME || !IROBOT_PASSWORD) {
@@ -237,8 +265,9 @@ async function loginGigya(endpoints) {
 
   if (body.errorCode !== 0) {
     throw new Error(
-      `Gigya認証エラー: ${body.errorMessage ||
-      `errorCode=${body.errorCode}, statusCode=${body.statusCode}, callId=${body.callId}, time=${body.time}`
+      `Gigya認証エラー: ${
+        body.errorMessage ||
+        `errorCode=${body.errorCode}, statusCode=${body.statusCode}, callId=${body.callId}, time=${body.time}`
       }`
     );
   }
@@ -311,6 +340,10 @@ async function loginIRobot(endpoints, gigyaCredentials) {
 // 指定時間（ミリ秒）待機する関数
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function getErrorMessage(error) {
+  return error instanceof Error ? error.message : String(error);
 }
 
 // AWS IoT Device Shadow からロボット状態を取得する関数
@@ -860,26 +893,57 @@ async function getBatteryLevel() {
   return { batteryLevel, deviceName };
 }
 
-// メイン処理
-async function main() {
-  if (LOCAL_ONLY) {
-    console.log('Roombaバッテリー確認を開始します（ローカル検証モード）');
-  } else {
-    console.log('Roombaバッテリーチェックを開始します（Cloud API経由）');
+function shouldSendNotificationInContinuousMode(batteryLevel, state) {
+  if (batteryLevel >= 100 && !FORCE_NOTIFICATION) {
+    return {
+      shouldSend: false,
+      reason: `バッテリー残量は${batteryLevel}%です。通知は不要です`,
+    };
   }
 
-  let batteryLevel, deviceName;
+  const now = Date.now();
+  if (state.lastNotificationAt == null) {
+    return {
+      shouldSend: true,
+      reason:
+        batteryLevel < 100
+          ? `バッテリー残量が${batteryLevel}%です。メール通知を送信します`
+          : '強制通知フラグがONです。バッテリー残量100%ですが通知を送信します（疎通確認）',
+    };
+  }
+
+  const elapsedMs = now - state.lastNotificationAt;
+  if (elapsedMs >= NOTIFICATION_COOLDOWN_MS) {
+    return {
+      shouldSend: true,
+      reason:
+        batteryLevel < 100
+          ? `バッテリー残量が${batteryLevel}%です。メール通知を送信します`
+          : '強制通知フラグがONです。バッテリー残量100%ですが通知を送信します（疎通確認）',
+    };
+  }
+
+  const nextAllowedMinutes = Math.ceil((NOTIFICATION_COOLDOWN_MS - elapsedMs) / 60000);
+  return {
+    shouldSend: false,
+    reason: `前回通知からクールダウン中のため通知をスキップします（残り約${nextAllowedMinutes}分）`,
+  };
+}
+
+async function runBatteryCheckOnce(state) {
+  let batteryLevel;
+  let deviceName;
+
   try {
     ({ batteryLevel, deviceName } = await getBatteryLevel());
   } catch (error) {
-    console.error('エラー:', error.message);
-    process.exit(1);
+    console.error('エラー:', getErrorMessage(error));
+    return false;
   }
 
-  // バッテリー情報が取得できなかった場合はスキップ
   if (batteryLevel === null) {
     console.log('バッテリーチェック完了（バッテリー情報取得失敗のためスキップ）');
-    return;
+    return true;
   }
 
   console.log(`デバイス: ${deviceName}, バッテリー残量: ${batteryLevel}%`);
@@ -887,12 +951,22 @@ async function main() {
   if (LOCAL_ONLY) {
     console.log('ローカル検証モードのため、メール通知は送信しません');
     console.log('バッテリーチェック完了（ローカル検証モード）');
-    return;
+    return true;
   }
 
-  // バッテリーが100%でない場合、または強制通知フラグがONの場合はメール通知
   try {
-    if (batteryLevel < 100) {
+    if (RUN_CONTINUOUS) {
+      const decision = shouldSendNotificationInContinuousMode(batteryLevel, state);
+      console.log(decision.reason);
+      if (decision.shouldSend) {
+        const statusMessage =
+          batteryLevel < 100
+            ? 'バッテリーが100%ではないため、清掃スケジュールの実行に影響する可能性があります。\n充電を確認してください。'
+            : 'バッテリーは満充電されています。\nこのメールは疎通確認のための強制通知です。';
+        await sendNotification(batteryLevel, deviceName, statusMessage);
+        state.lastNotificationAt = Date.now();
+      }
+    } else if (batteryLevel < 100) {
       console.log(`バッテリー残量が${batteryLevel}%です。メール通知を送信します`);
       const statusMessage =
         'バッテリーが100%ではないため、清掃スケジュールの実行に影響する可能性があります。\n充電を確認してください。';
@@ -906,11 +980,61 @@ async function main() {
       console.log(`バッテリー残量は${batteryLevel}%です。通知は不要です`);
     }
   } catch (error) {
-    console.error('エラーが発生しました:', error);
-    process.exit(1);
+    console.error('エラーが発生しました:', getErrorMessage(error));
+    return false;
   }
 
   console.log('バッテリーチェック完了');
+  return true;
+}
+
+async function runContinuousMode() {
+  console.log('Roombaバッテリーチェックを開始します（常時実行モード）');
+  console.log(
+    `実行間隔: ${CHECK_INTERVAL_MINUTES}分, 通知クールダウン: ${NOTIFICATION_COOLDOWN_MINUTES}分`
+  );
+
+  const state = { lastNotificationAt: null };
+  let stopRequested = false;
+
+  function requestStop(signalName) {
+    stopRequested = true;
+    console.log(`${signalName} を受信しました。現在の処理完了後に終了します...`);
+  }
+
+  process.on('SIGINT', () => requestStop('SIGINT'));
+  process.on('SIGTERM', () => requestStop('SIGTERM'));
+
+  while (!stopRequested) {
+    await runBatteryCheckOnce(state);
+    if (stopRequested) {
+      break;
+    }
+    console.log(`${CHECK_INTERVAL_MINUTES}分待機します...`);
+    await sleep(CHECK_INTERVAL_MS);
+  }
+
+  console.log('常時実行モードを終了します');
+}
+
+// メイン処理
+async function main() {
+  if (RUN_CONTINUOUS) {
+    await runContinuousMode();
+    return;
+  }
+
+  if (LOCAL_ONLY) {
+    console.log('Roombaバッテリー確認を開始します（ローカル検証モード）');
+  } else {
+    console.log('Roombaバッテリーチェックを開始します（Cloud API経由）');
+  }
+
+  const state = { lastNotificationAt: null };
+  const success = await runBatteryCheckOnce(state);
+  if (!success) {
+    process.exit(1);
+  }
 }
 
 main();

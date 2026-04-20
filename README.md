@@ -72,6 +72,55 @@ npm run check-battery
 npm run check-battery -l
 ```
 
+### Raspberry Pi で常時実行する場合
+
+Raspberry Pi で常駐実行する場合は、デーモンモードを使います。
+
+```bash
+RUN_CONTINUOUS=true CHECK_INTERVAL_MINUTES=30 NOTIFICATION_COOLDOWN_MINUTES=180 npm run check-battery
+```
+
+- `RUN_CONTINUOUS=true`: 常時実行モードを有効化
+- `CHECK_INTERVAL_MINUTES`: チェック間隔（分）
+- `NOTIFICATION_COOLDOWN_MINUTES`: 通知の最短間隔（分、同一条件での連続通知を抑制）
+
+コマンド引数でもデーモンモードを有効化できます。
+
+```bash
+npm run check-battery -- --daemon
+```
+
+systemd で自動起動させる場合は、次の手順で設定できます。
+
+1. `.env.example` を `.env` にコピーして値を設定
+2. `RUN_CONTINUOUS=true` を設定
+3. 次のコマンドを実行
+
+```bash
+chmod +x scripts/install_systemd_service.sh
+./scripts/install_systemd_service.sh
+```
+
+ログ確認コマンド:
+
+```bash
+sudo journalctl -u roomba-battery-checker.service -f
+```
+
+sudo なしで運用する場合は、先に Node.js ランタイムをユーザー領域へ導入してから常駐実行します。
+
+```bash
+chmod +x scripts/setup_pi_runtime.sh scripts/run_on_pi.sh
+./scripts/setup_pi_runtime.sh
+nohup ./scripts/run_on_pi.sh > ./roomba-battery-checker.log 2>&1 &
+```
+
+再起動時にも自動起動させる場合は、ユーザー crontab に登録します。
+
+```bash
+(crontab -l 2>/dev/null; echo '@reboot /home/pi/work/roomba-battery-checker/scripts/run_on_pi.sh >> /home/pi/work/roomba-battery-checker/roomba-battery-checker.log 2>&1') | crontab -
+```
+
 ## トラブルシューティング
 
 ### GitHub Actions関連
