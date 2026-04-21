@@ -265,9 +265,8 @@ async function loginGigya(endpoints) {
 
   if (body.errorCode !== 0) {
     throw new Error(
-      `Gigya認証エラー: ${
-        body.errorMessage ||
-        `errorCode=${body.errorCode}, statusCode=${body.statusCode}, callId=${body.callId}, time=${body.time}`
+      `Gigya認証エラー: ${body.errorMessage ||
+      `errorCode=${body.errorCode}, statusCode=${body.statusCode}, callId=${body.callId}, time=${body.time}`
       }`
     );
   }
